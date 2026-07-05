@@ -50,7 +50,7 @@
       :closeBtn="false"
       placement="center"
       :attach="false"
-      width="60%"
+      width="480px"
       class="customer-dialog"
     >
       <div class="popup-container">
@@ -83,7 +83,7 @@
       :closeBtn="false"
       placement="center"
       :attach="false"
-      width="60%"
+      width="480px"
       class="customer-dialog"
     >
       <div class="popup-container">
@@ -116,7 +116,7 @@
       :closeBtn="false"
       placement="center"
       :attach="false"
-      width="60%"
+      width="480px"
       class="customer-dialog delete-dialog"
     >
       <div class="popup-container">
@@ -392,8 +392,6 @@ onMounted(() => {
       background: $bg-white;
       border-radius: $radius-lg;
       padding: 0;
-      width: 320px;
-      max-width: 320px;
     }
 
     :deep(.t-dialog__header) {
@@ -419,10 +417,10 @@ onMounted(() => {
     width: 100%;
 
     .popup-body {
-      padding: $spacing-md $spacing-lg;
+      padding: $spacing-lg;
 
       .form-item {
-        margin-bottom: $spacing-md;
+        margin-bottom: $spacing-lg;
 
         &:last-child {
           margin-bottom: 0;
@@ -431,7 +429,7 @@ onMounted(() => {
         .form-label {
           font-size: $font-sm;
           color: $text-secondary;
-          margin-bottom: $spacing-xs;
+          margin-bottom: $spacing-sm;
           font-weight: 500;
           text-align: left;
 
@@ -444,11 +442,11 @@ onMounted(() => {
 
         .form-input {
           width: 100%;
-          height: 40px;
+          height: 44px;
           padding: $spacing-sm $spacing-md;
           border: 1px solid $border-color;
           border-radius: $radius-md;
-          font-size: $font-sm;
+          font-size: $font-md;
           color: $text-primary;
           background: $bg-color;
           transition: all 0.2s ease;
@@ -500,6 +498,16 @@ onMounted(() => {
       .delete-warning {
         font-size: $font-sm;
         color: $text-secondary;
+      }
+    }
+  }
+
+  // 移动端适配
+  @media (max-width: 480px) {
+    .customer-dialog {
+      :deep(.t-dialog__content) {
+        width: calc(100vw - 48px) !important;
+        max-width: calc(100vw - 48px) !important;
       }
     }
   }

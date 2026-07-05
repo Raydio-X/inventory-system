@@ -1038,7 +1038,7 @@ class MySQLDataStore {
     }
 
     if (lowStock) {
-      sql += ' AND s.stock < 5';
+      sql += ' AND s.stock <= 10';
     }
 
     sql += ' ORDER BY p.created_at DESC';

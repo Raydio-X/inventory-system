@@ -186,7 +186,6 @@
         </div>
       </div>
       <div class="bar-actions">
-        <div class="btn-suspend" @click="suspendOrder">挂单</div>
         <div class="btn-checkout" @click="goToCheckout">
           <span>结算</span>
         </div>
@@ -524,14 +523,6 @@ const doConfirm = () => {
     confirmAction.value()
   }
   showConfirm.value = false
-}
-
-// 挂单
-const suspendOrder = () => {
-  if (cartItems.value.length === 0) return
-  billingStore.suspendOrder()
-  MessagePlugin.success('已挂单')
-  router.push('/billing')
 }
 
 // 结算（先显示确认弹窗）
@@ -1170,19 +1161,6 @@ const goBack = () => {
       padding: 10px 16px;
       padding-bottom: calc(10px + #{$safe-area-bottom});
       gap: 10px;
-
-      .btn-suspend {
-        padding: 10px 40px;
-        background: $bg-page;
-        border: 1px solid $border-color;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 600;
-        color: $text-secondary;
-        cursor: pointer;
-        flex-shrink: 0;
-        &:active { background: $border-lighter; }
-      }
 
       .btn-checkout {
         flex: 1;

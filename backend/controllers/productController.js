@@ -39,10 +39,8 @@ function mapProductRow(row) {
   return {
     id: row.id,
     name: row.name,
-    brand: row.brand,
     category: row.category,
     supplierId: row.supplier_id,
-    season: row.season,
     status: row.status,
     price: parseFloat(row.price),
     costPrice: parseFloat(row.cost_price),
@@ -167,7 +165,7 @@ const getProductById = async (req, res, next) => {
  */
 const createProduct = async (req, res, next) => {
   try {
-    const { name, brand, season, category, supplierId, price, costPrice, skus, image } = req.body;
+    const { name, category, supplierId, price, costPrice, skus, image } = req.body;
 
     // 数据验证
     if (!name) {
@@ -186,8 +184,8 @@ const createProduct = async (req, res, next) => {
     const skuIdMap = []; // 保存每个 SKU 的 ID
     await db.transaction(async (connection) => {
       await connection.query(
-        'INSERT INTO products (id, name, brand, category, supplier_id, season, status, price, cost_price, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [productId, name, brand || '', category || '', supplierId || null, season || '', 'active', price, costPrice || 0, image || '']
+        'INSERT INTO products (id, name, category, supplier_id, status, price, cost_price, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [productId, name, category || '', supplierId || null, 'active', price, costPrice || 0, image || '']
       );
 
       for (const sku of skus) {
@@ -268,7 +266,7 @@ const createProduct = async (req, res, next) => {
 const updateProduct = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, brand, season, category, supplierId, price, costPrice, skus, image, status } = req.body;
+    const { name, category, supplierId, price, costPrice, skus, image, status } = req.body;
 
     const [existing] = await db.query('SELECT * FROM products WHERE id = ?', [id]);
 
@@ -278,13 +276,11 @@ const updateProduct = async (req, res, next) => {
 
     await db.transaction(async (connection) => {
       await connection.query(
-        'UPDATE products SET name = ?, brand = ?, category = ?, supplier_id = ?, season = ?, status = ?, price = ?, cost_price = ?, image = ? WHERE id = ?',
+        'UPDATE products SET name = ?, category = ?, supplier_id = ?, status = ?, price = ?, cost_price = ?, image = ? WHERE id = ?',
         [
           name !== undefined ? name : existing.name,
-          brand !== undefined ? brand : existing.brand,
           category !== undefined ? category : existing.category,
           supplierId !== undefined ? supplierId : existing.supplier_id,
-          season !== undefined ? season : existing.season,
           status !== undefined ? status : existing.status,
           price !== undefined ? price : existing.price,
           costPrice !== undefined ? costPrice : existing.cost_price,
@@ -294,14 +290,34 @@ const updateProduct = async (req, res, next) => {
       );
 
       if (skus && skus.length > 0) {
-        // 删除旧 SKU，插入新 SKU
-        await connection.query('DELETE FROM skus WHERE product_id = ?', [id]);
+        // 获取当前商品的 SKU ID 列表
+        const [currentSkus] = await connection.query('SELECT id FROM skus WHERE product_id = ?', [id]);
+        const currentSkuIds = currentSkus.map(s => s.id);
+        const newSkuIds = skus.filter(s => s.id).map(s => s.id);
+
+        // 删除前端已移除的 SKU
+        const idsToDelete = currentSkuIds.filter(sid => !newSkuIds.includes(sid));
+        if (idsToDelete.length > 0) {
+          const placeholders = idsToDelete.map(() => '?').join(',');
+          await connection.query(`DELETE FROM skus WHERE id IN (${placeholders})`, idsToDelete);
+        }
+
+        // 更新或插入 SKU
         for (const sku of skus) {
-          const skuId = generateSkuId();
-          await connection.query(
-            'INSERT INTO skus (id, product_id, color, size, stock, price) VALUES (?, ?, ?, ?, ?, ?)',
-            [skuId, id, sku.color, sku.size, sku.stock || 0, sku.price || price || existing.price]
-          );
+          if (sku.id && currentSkuIds.includes(sku.id)) {
+            // 更新已有 SKU（保留 ID，保持关联数据完整性）
+            await connection.query(
+              'UPDATE skus SET color = ?, size = ?, stock = ?, price = ? WHERE id = ?',
+              [sku.color, sku.size, sku.stock || 0, sku.price || price || existing.price, sku.id]
+            );
+          } else {
+            // 新增 SKU
+            const skuId = sku.id || generateSkuId();
+            await connection.query(
+              'INSERT INTO skus (id, product_id, color, size, stock, price) VALUES (?, ?, ?, ?, ?, ?)',
+              [skuId, id, sku.color, sku.size, sku.stock || 0, sku.price || price || existing.price]
+            );
+          }
         }
       }
     });

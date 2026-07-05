@@ -57,16 +57,6 @@
         </div>
 
         <div class="form-item">
-          <label class="form-label">品牌</label>
-          <input
-            v-model="product.brand"
-            type="text"
-            class="form-input"
-            placeholder="请输入品牌名称"
-          />
-        </div>
-
-        <div class="form-item">
           <label class="form-label">成本</label>
           <div class="cost-input-box">
             <span class="cost-prefix">¥</span>
@@ -108,20 +98,21 @@
       <div class="card-header">
         <t-icon name="layers" class="header-icon" />
         <span class="header-title">规格库存</span>
-        <t-button
-          theme="primary"
-          size="small"
-          class="add-sku-btn"
-          @click="addSku"
-        >
-          <t-icon name="add" />
-          <span>添加</span>
-        </t-button>
       </div>
 
       <div v-if="product.skus.length === 0" class="sku-empty">
         <t-icon name="inbox" class="empty-icon" />
-        <span class="empty-text">暂无规格，点击上方按钮添加</span>
+        <span class="empty-text">暂无规格</span>
+        <t-button
+          theme="primary"
+          size="small"
+          variant="outline"
+          class="sku-add-btn"
+          @click="addSku"
+        >
+          <template #icon><t-icon name="add" /></template>
+          添加规格
+        </t-button>
       </div>
 
       <div v-else class="sku-grid">
@@ -135,7 +126,7 @@
             <t-icon
               name="close-circle-filled"
               class="sku-delete-icon"
-              @click="removeSku(index)"
+              @click="confirmRemoveSku(index)"
             />
           </div>
 
@@ -188,8 +179,46 @@
             </div>
           </div>
         </div>
+
+        <!-- 添加规格按钮 - 固定在所有规格项下方，仅显示一次 -->
+        <div class="sku-add-row">
+          <t-button
+            theme="primary"
+            size="small"
+            variant="outline"
+            class="sku-add-btn"
+            @click="addSku"
+          >
+            <template #icon><t-icon name="add" /></template>
+            添加规格
+          </t-button>
+        </div>
       </div>
     </div>
+
+    <!-- 删除规格确认弹窗 -->
+    <t-dialog
+      v-model:visible="showDeleteSkuDialog"
+      header="确认删除"
+      :footer="false"
+      :closeBtn="false"
+      placement="center"
+      :attach="false"
+      width="480px"
+      class="delete-sku-dialog"
+    >
+      <div class="delete-sku-container">
+        <div class="delete-sku-body">
+          <t-icon name="error-circle" class="delete-sku-icon" />
+          <p>确定要删除规格 {{ deleteSkuIndex + 1 }} 吗？</p>
+          <p class="delete-sku-warning">删除后无法恢复</p>
+        </div>
+        <div class="delete-sku-footer">
+          <t-button theme="default" size="large" @click="showDeleteSkuDialog = false">取消</t-button>
+          <t-button theme="danger" size="large" @click="removeSku">确认删除</t-button>
+        </div>
+      </div>
+    </t-dialog>
 
     <!-- 底部操作按钮 -->
     <div class="action-bar">
@@ -218,11 +247,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Select, Button, Icon, MessagePlugin } from 'tdesign-vue-next'
+import { Select, Button, Icon, MessagePlugin, Dialog } from 'tdesign-vue-next'
 import Navbar from '@/components/Navbar.vue'
 import { useProductStore } from '@/store/product'
 import api from '@/utils/api'
-import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
@@ -238,7 +266,6 @@ const uploading = ref(false)
 const loading = ref(false)
 const product = ref({
   name: '',
-  brand: '',
   costPrice: 0,
   categoryId: null,
   supplierId: null,
@@ -303,15 +330,15 @@ const handleImageSelect = async (event) => {
     formData.append('image', file)
 
     // 上传到后端
-    const response = await axios.post('http://localhost:3001/api/upload/product-image', formData, {
+    const response = await api.post('/upload/product-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
 
-    if (response.data.success) {
-      // 设置图片URL（完整的URL）
-      productImage.value = `http://localhost:3001${response.data.data.url}`
+    if (response.success) {
+      // 设置图片URL（使用相对路径，由nginx代理）
+      productImage.value = response.data.url
       MessagePlugin.success('图片上传成功')
     } else {
       MessagePlugin.error('图片上传失败')
@@ -335,8 +362,21 @@ const addSku = () => {
   })
 }
 
-const removeSku = (index) => {
-  product.value.skus.splice(index, 1)
+// 删除规格确认
+const showDeleteSkuDialog = ref(false)
+const deleteSkuIndex = ref(-1)
+
+const confirmRemoveSku = (index) => {
+  deleteSkuIndex.value = index
+  showDeleteSkuDialog.value = true
+}
+
+const removeSku = () => {
+  if (deleteSkuIndex.value >= 0) {
+    product.value.skus.splice(deleteSkuIndex.value, 1)
+    deleteSkuIndex.value = -1
+    showDeleteSkuDialog.value = false
+  }
 }
 
 // 加载商品数据（编辑模式）
@@ -351,9 +391,8 @@ const loadProductData = async () => {
       // 填充表单数据
       product.value = {
         name: productData.name,
-        brand: productData.brand || '',
         costPrice: productData.costPrice || 0,
-        categoryId: productData.categoryId || null,
+        categoryId: productData.category ? Number(productData.category) : null,
         supplierId: productData.supplierId || null,
         skus: productData.skus ? productData.skus.map(sku => ({
           id: sku.id,
@@ -413,13 +452,13 @@ const saveProduct = async () => {
     // 构建商品数据
     const productData = {
       name: product.value.name.trim(),
-      brand: product.value.brand || '',
       category: product.value.categoryId || null,
       supplierId: product.value.supplierId || null,
       image: productImage.value || '',
       price: product.value.skus[0]?.price || 0,
       costPrice: product.value.costPrice || 0,
       skus: product.value.skus.map(sku => ({
+        id: sku.id || undefined,
         color: sku.color.trim(),
         size: sku.size.trim(),
         stock: sku.stock || 0,
@@ -438,7 +477,8 @@ const saveProduct = async () => {
     router.push('/products')
   } catch (error) {
     console.error('保存失败:', error)
-    MessagePlugin.error(isEditMode.value ? '商品更新失败，请检查网络连接' : '商品保存失败，请检查网络连接')
+    const errorMsg = error.message || (isEditMode.value ? '商品更新失败' : '商品保存失败')
+    MessagePlugin.error(errorMsg)
   }
 }
 
@@ -632,22 +672,6 @@ onMounted(() => {
         color: $text-primary;
         font-weight: 600;
       }
-
-      .add-sku-btn {
-        margin-left: auto;
-        display: flex;
-        align-items: center;
-        gap: $spacing-xs;
-        border-radius: $radius-md;
-        padding: $spacing-sm $spacing-md;
-        font-size: $font-sm;
-
-        :deep(.t-button__text) {
-          display: flex;
-          align-items: center;
-          gap: $spacing-xs;
-        }
-      }
     }
 
     .form-group {
@@ -827,11 +851,17 @@ onMounted(() => {
 
       .empty-text {
         font-size: $font-sm;
+        margin-bottom: $spacing-md;
+      }
+
+      .sku-add-btn {
+        margin-top: $spacing-sm;
       }
     }
 
     .sku-grid {
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: $spacing-md;
 
       .sku-item-card {
@@ -934,6 +964,19 @@ onMounted(() => {
           }
         }
       }
+
+      // 添加规格按钮 - 位于所有规格项下方
+      .sku-add-row {
+        display: flex;
+        justify-content: center;
+        padding: $spacing-md 0;
+
+        .sku-add-btn {
+          border-radius: $radius-md;
+          padding: $spacing-sm $spacing-lg;
+          font-size: $font-md;
+        }
+      }
     }
   }
 
@@ -985,6 +1028,78 @@ onMounted(() => {
       &:disabled {
         opacity: 0.5;
         box-shadow: none;
+      }
+    }
+  }
+
+  // 删除规格确认弹窗
+  .delete-sku-dialog {
+    :deep(.t-dialog__content) {
+      background: $bg-white;
+      border-radius: $radius-lg;
+      padding: 0;
+    }
+
+    :deep(.t-dialog__header) {
+      padding: $spacing-md $spacing-lg;
+      font-size: $font-md;
+      font-weight: 600;
+      color: $text-primary;
+      border-bottom: 1px solid $border-light;
+    }
+
+    :deep(.t-dialog__body) {
+      padding: 0;
+    }
+
+    :deep(.t-dialog__close) {
+      display: none;
+    }
+  }
+
+  .delete-sku-container {
+    width: 100%;
+
+    .delete-sku-body {
+      text-align: center;
+      padding: $spacing-lg;
+
+      .delete-sku-icon {
+        font-size: 40px;
+        color: $error-color;
+        margin-bottom: $spacing-md;
+      }
+
+      p {
+        font-size: $font-md;
+        color: $text-primary;
+        margin-bottom: $spacing-xs;
+      }
+
+      .delete-sku-warning {
+        font-size: $font-sm;
+        color: $text-placeholder;
+      }
+    }
+
+    .delete-sku-footer {
+      display: flex;
+      gap: $spacing-md;
+      padding: $spacing-md $spacing-lg;
+
+      .t-button {
+        flex: 1;
+        border-radius: $radius-md;
+      }
+    }
+  }
+
+  // 移动端适配
+  @media (max-width: 480px) {
+    .delete-sku-dialog {
+      :deep(.t-dialog__content) {
+        width: calc(100vw - 48px) !important;
+        max-width: calc(100vw - 48px) !important;
       }
     }
   }

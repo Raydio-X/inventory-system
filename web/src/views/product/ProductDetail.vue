@@ -41,20 +41,12 @@
               <div class="info-value primary">{{ product.name }}</div>
             </div>
             <div class="info-item">
-              <label class="info-label">品牌</label>
-              <div class="info-value">{{ product.brand || '未设置' }}</div>
-            </div>
-            <div class="info-item">
               <label class="info-label">分类</label>
               <div class="info-value">{{ getCategoryName(product.categoryId) }}</div>
             </div>
             <div class="info-item">
               <label class="info-label">供应商</label>
               <div class="info-value">{{ getSupplierName(product.supplierId) }}</div>
-            </div>
-            <div class="info-item">
-              <label class="info-label">季节</label>
-              <div class="info-value">{{ product.season || '未设置' }}</div>
             </div>
             <div class="info-item">
               <label class="info-label">状态</label>
@@ -145,7 +137,7 @@
                   <span class="sku-size">{{ sku.size }}</span>
                 </div>
                 <div class="table-cell stock-cell">
-                  <span class="stock-num" :class="{ low: sku.stock < 10, warning: sku.stock < 5 }">
+                  <span class="stock-num" :class="{ warning: sku.stock <= 10 }">
                     {{ sku.stock }}
                   </span>
                 </div>
@@ -208,7 +200,7 @@ const totalStock = computed(() =>
 )
 
 const warningStock = computed(() =>
-  product.value?.skus?.filter(sku => sku.stock < 5).length || 0
+  product.value?.skus?.filter(sku => sku.stock <= 10).length || 0
 )
 
 const profitRate = computed(() => {

@@ -187,24 +187,21 @@ const getQuantity = (sku) => {
 // 获取库存状态
 const getStockStatus = (stock) => {
   if (stock === 0) return 'empty'
-  if (stock < 5) return 'low'
-  if (stock < 10) return 'warning'
+  if (stock <= 10) return 'warning'
   return 'normal'
 }
 
 // 获取库存图标
 const getStockIcon = (stock) => {
   if (stock === 0) return 'error-circle'
-  if (stock < 5) return 'error-circle'
-  if (stock < 10) return 'info-circle'
+  if (stock <= 10) return 'info-circle'
   return 'check-circle'
 }
 
 // 获取库存文本
 const getStockText = (stock) => {
   if (stock === 0) return '缺货'
-  if (stock < 5) return '库存不足'
-  if (stock < 10) return '库存偏低'
+  if (stock <= 10) return '库存预警'
   return '库存正常'
 }
 

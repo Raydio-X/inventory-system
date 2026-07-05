@@ -22,9 +22,6 @@ export const useBillingStore = defineStore('billing', () => {
   // 部分付款金额
   const partialPaidAmount = ref(0)
 
-  // 挂单列表
-  const suspendedOrders = ref([])
-
   // 销售单列表
   const salesOrders = ref([])
 
@@ -154,42 +151,6 @@ export const useBillingStore = defineStore('billing', () => {
   // 设置部分付款金额
   const setPartialPaidAmount = (amount) => {
     partialPaidAmount.value = amount
-  }
-
-  // 挂单
-  const suspendOrder = () => {
-    if (cartItems.value.length === 0) return
-
-    suspendedOrders.value.push({
-      id: Date.now(),
-      items: [...cartItems.value],
-      customer: currentCustomer.value,
-      discount: orderDiscount.value,
-      roundOff: roundOffAmount.value,
-      paymentStatus: paymentStatus.value,
-      partialPaidAmount: partialPaidAmount.value,
-      createdAt: new Date().toISOString()
-    })
-    clearCart()
-  }
-
-  // 恢复挂单
-  const resumeOrder = (orderId) => {
-    const order = suspendedOrders.value.find(o => o.id === orderId)
-    if (order) {
-      cartItems.value = [...order.items]
-      currentCustomer.value = order.customer
-      orderDiscount.value = order.discount
-      roundOffAmount.value = order.roundOff
-      paymentStatus.value = order.paymentStatus || 'unpaid'
-      partialPaidAmount.value = order.partialPaidAmount || 0
-      suspendedOrders.value = suspendedOrders.value.filter(o => o.id !== orderId)
-    }
-  }
-
-  // 删除挂单
-  const deleteSuspendedOrder = (orderId) => {
-    suspendedOrders.value = suspendedOrders.value.filter(o => o.id !== orderId)
   }
 
   // 创建销售单（调用后端API，事务写入数据库）
@@ -350,7 +311,6 @@ export const useBillingStore = defineStore('billing', () => {
     roundOffAmount,
     paymentStatus,
     partialPaidAmount,
-    suspendedOrders,
     salesOrders,
     returnOrders,
     cartItemCount,
@@ -369,9 +329,6 @@ export const useBillingStore = defineStore('billing', () => {
     setRoundOffAmount,
     setPaymentStatus,
     setPartialPaidAmount,
-    suspendOrder,
-    resumeOrder,
-    deleteSuspendedOrder,
     createSalesOrder,
     getSalesOrder,
     addPaymentRecord,

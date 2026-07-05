@@ -31,15 +31,6 @@
       </div>
     </div>
 
-    <!-- 挂单提示 -->
-    <div v-if="suspendedOrders.length > 0" class="suspended-banner" @click="showSuspendedList">
-      <div class="banner-content">
-        <t-icon name="time" class="banner-icon" />
-        <span class="banner-text">有 {{ suspendedOrders.length }} 笔挂单待处理</span>
-      </div>
-      <t-icon name="chevron-right" class="banner-arrow" />
-    </div>
-
     <!-- 商品列表 -->
     <div class="product-section">
       <!-- 空状态 -->
@@ -175,37 +166,6 @@
       </div>
     </t-dialog>
 
-    <!-- 挂单列表弹窗 -->
-    <t-dialog
-      v-model:visible="showSuspendedPopup"
-      header="挂单列表"
-      :footer="false"
-      placement="center"
-      width="90%"
-      :attach="false"
-      class="suspended-dialog"
-    >
-      <div class="suspended-popup">
-        <div class="suspended-list">
-          <div
-            v-for="order in suspendedOrders"
-            :key="order.id"
-            class="suspended-item"
-          >
-            <div class="order-info">
-              <div class="order-time">{{ formatTime(order.createdAt) }}</div>
-              <div class="order-customer">{{ order.customer?.name || '散客' }}</div>
-              <div class="order-count">{{ order.items.length }}件商品</div>
-            </div>
-            <div class="order-actions">
-              <t-button theme="primary" size="small" @click="resumeOrder(order.id)">恢复</t-button>
-              <t-button theme="danger" size="small" @click="deleteOrder(order.id)">删除</t-button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </t-dialog>
-
     <!-- 购物车浮动按钮 -->
     <div v-if="cartItemCount > 0" class="cart-fab" @click="goToCart">
       <div class="fab-content">
@@ -272,9 +232,6 @@ const filteredProducts = computed(() => {
   return products
 })
 
-// 挂单列表
-const suspendedOrders = computed(() => billingStore.suspendedOrders)
-
 // SKU 选择弹窗
 const showSkuPopup = ref(false)
 const selectedProduct = ref(null)
@@ -305,9 +262,6 @@ const totalQuantity = computed(() =>
 const selectedTotalPrice = computed(() =>
   selectedItems.value.reduce((sum, item) => sum + item.price * item.quantity, 0)
 )
-
-// 挂单弹窗
-const showSuspendedPopup = ref(false)
 
 // 购物车
 const cartItemCount = computed(() => billingStore.cartItemCount)
@@ -370,29 +324,6 @@ const addToCart = () => {
   })
 
   closeSkuPopup()
-}
-
-// 显示挂单列表
-const showSuspendedList = () => {
-  showSuspendedPopup.value = true
-}
-
-// 恢复挂单
-const resumeOrder = (orderId) => {
-  billingStore.resumeOrder(orderId)
-  showSuspendedPopup.value = false
-  router.push('/billing/cart')
-}
-
-// 删除挂单
-const deleteOrder = (orderId) => {
-  billingStore.deleteSuspendedOrder(orderId)
-}
-
-// 格式化时间
-const formatTime = (time) => {
-  const date = new Date(time)
-  return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
 // 跳转购物车
@@ -472,46 +403,6 @@ onMounted(() => {
           }
         }
       }
-    }
-  }
-
-  // 挂单提示
-  .suspended-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: $spacing-md $spacing-lg;
-    background: linear-gradient(135deg, rgba($warning-color, 0.1), rgba($warning-color, 0.05));
-    border-left: 3px solid $warning-color;
-    margin: $spacing-md $spacing-lg;
-    border-radius: $radius-md;
-    cursor: pointer;
-    transition: all 0.2s;
-
-    &:hover {
-      background: linear-gradient(135deg, rgba($warning-color, 0.15), rgba($warning-color, 0.08));
-    }
-
-    .banner-content {
-      display: flex;
-      align-items: center;
-      gap: $spacing-sm;
-
-      .banner-icon {
-        font-size: 18px;
-        color: $warning-color;
-      }
-
-      .banner-text {
-        font-size: $font-sm;
-        color: $warning-color;
-        font-weight: 500;
-      }
-    }
-
-    .banner-arrow {
-      font-size: 16px;
-      color: $warning-color;
     }
   }
 
@@ -968,76 +859,6 @@ onMounted(() => {
                 display: flex !important;
                 align-items: center !important;
                 font-size: $font-md;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // 挂单列表弹窗
-  .suspended-dialog {
-    :deep(.t-dialog) {
-      max-width: 400px;
-      border-radius: $radius-xl;
-    }
-
-    .suspended-popup {
-      .suspended-list {
-        .suspended-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: $spacing-md;
-          border-bottom: 1px solid $border-light;
-
-          &:last-child {
-            border-bottom: none;
-          }
-
-          .order-info {
-            flex: 1;
-
-            .order-time {
-              font-size: $font-sm;
-              color: $text-secondary;
-              margin-bottom: 4px;
-            }
-
-            .order-customer {
-              font-size: $font-md;
-              color: $text-primary;
-              font-weight: 500;
-              margin-bottom: 4px;
-            }
-
-            .order-count {
-              font-size: $font-xs;
-              color: $text-placeholder;
-            }
-          }
-
-          .order-actions {
-            display: flex;
-            gap: $spacing-xs;
-
-            .t-button {
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-
-              .t-icon {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                flex-shrink: 0;
-              }
-
-              span {
-                display: inline-flex;
-                align-items: center;
-                flex-shrink: 0;
               }
             }
           }

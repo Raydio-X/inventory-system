@@ -44,7 +44,7 @@
         <div class="sku-list">
           <div v-for="sku in product.skus" :key="sku.id" class="sku-row">
             <span class="sku-info">{{ sku.color }} / {{ sku.size }}</span>
-            <span class="sku-stock" :class="{ warning: sku.stock < 5 }">
+            <span class="sku-stock" :class="{ warning: sku.stock <= 10 }">
               {{ sku.stock }}件</span>
             <span class="sku-price">¥{{ sku.price }}</span>
           </div>
