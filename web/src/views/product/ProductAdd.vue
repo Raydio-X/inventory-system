@@ -220,6 +220,30 @@
       </div>
     </t-dialog>
 
+    <!-- 创建采购单引导弹窗 -->
+    <t-dialog
+      v-model:visible="showPurchaseDialog"
+      header="创建采购单"
+      :footer="false"
+      :closeBtn="false"
+      placement="center"
+      :attach="false"
+      width="480px"
+      class="purchase-dialog"
+    >
+      <div class="purchase-dialog-container">
+        <div class="purchase-dialog-body">
+          <t-icon name="cart" class="purchase-dialog-icon" />
+          <p>商品已保存成功</p>
+          <p class="purchase-dialog-hint">检测到您录入了初始库存，是否创建采购单记录本次入库？</p>
+        </div>
+        <div class="purchase-dialog-footer">
+          <t-button theme="default" size="large" @click="skipPurchase">暂不创建</t-button>
+          <t-button theme="primary" size="large" @click="goToPurchase">创建采购单</t-button>
+        </div>
+      </div>
+    </t-dialog>
+
     <!-- 底部操作按钮 -->
     <div class="action-bar">
       <t-button
@@ -422,6 +446,9 @@ const loadProductData = async () => {
   }
 }
 
+const showPurchaseDialog = ref(false)
+const savedProductId = ref(null)
+
 const saveProduct = async () => {
   // 前端表单验证
   if (!product.value.name || !product.value.name.trim()) {
@@ -469,17 +496,59 @@ const saveProduct = async () => {
     // 根据模式调用不同的API
     if (isEditMode.value) {
       await productStore.updateProduct(productId.value, productData)
+      MessagePlugin.success('商品更新成功')
+      router.push('/products')
     } else {
-      await productStore.addProduct(productData)
-    }
+      const result = await productStore.addProduct(productData)
+      MessagePlugin.success('商品保存成功')
 
-    MessagePlugin.success(isEditMode.value ? '商品更新成功' : '商品保存成功')
-    router.push('/products')
+      // 检查是否有初始库存，如果有则提示创建采购单
+      const hasStock = productData.skus.some(sku => (sku.stock || 0) > 0)
+      if (hasStock) {
+        // 获取新建商品的ID（从最新列表中查找）
+        const newProduct = productStore.products.find(p => p.name === productData.name)
+        if (newProduct) {
+          savedProductId.value = newProduct.id
+          showPurchaseDialog.value = true
+          return // 不自动跳转，等用户选择
+        }
+      }
+
+      router.push('/products')
+    }
   } catch (error) {
     console.error('保存失败:', error)
     const errorMsg = error.message || (isEditMode.value ? '商品更新失败' : '商品保存失败')
     MessagePlugin.error(errorMsg)
   }
+}
+
+// 跳转到新增采购页面
+const goToPurchase = () => {
+  showPurchaseDialog.value = false
+  const skus = product.value.skus.filter(sku => (sku.stock || 0) > 0)
+  const skuIds = skus.map(sku => {
+    const newProduct = productStore.products.find(p => p.name === product.value.name.trim())
+    const newSku = newProduct?.skus?.find(s => s.color === sku.color.trim() && s.size === sku.size.trim())
+    return newSku?.id || ''
+  }).filter(id => id)
+  const stocks = skus.map(sku => sku.stock || 0)
+
+  const query = {
+    productId: savedProductId.value,
+    skuIds: skuIds.join(','),
+    stocks: stocks.join(',')
+  }
+  if (product.value.supplierId) {
+    query.supplierId = product.value.supplierId
+  }
+  router.push({ path: '/purchases/add', query })
+}
+
+// 不创建采购单，直接返回商品列表
+const skipPurchase = () => {
+  showPurchaseDialog.value = false
+  router.push('/products')
 }
 
 const goBack = () => {
@@ -1083,6 +1152,68 @@ onMounted(() => {
     }
 
     .delete-sku-footer {
+      display: flex;
+      gap: $spacing-md;
+      padding: $spacing-md $spacing-lg;
+
+      .t-button {
+        flex: 1;
+        border-radius: $radius-md;
+      }
+    }
+  }
+
+  // 创建采购单引导弹窗
+  .purchase-dialog {
+    :deep(.t-dialog__content) {
+      background: $bg-white;
+      border-radius: $radius-lg;
+      padding: 0;
+    }
+
+    :deep(.t-dialog__header) {
+      padding: $spacing-md $spacing-lg;
+      font-size: $font-md;
+      font-weight: 600;
+      color: $text-primary;
+      border-bottom: 1px solid $border-light;
+    }
+
+    :deep(.t-dialog__body) {
+      padding: 0;
+    }
+
+    :deep(.t-dialog__close) {
+      display: none;
+    }
+  }
+
+  .purchase-dialog-container {
+    width: 100%;
+
+    .purchase-dialog-body {
+      text-align: center;
+      padding: $spacing-lg;
+
+      .purchase-dialog-icon {
+        font-size: 40px;
+        color: $warning-color;
+        margin-bottom: $spacing-md;
+      }
+
+      p {
+        font-size: $font-md;
+        color: $text-primary;
+        margin-bottom: $spacing-xs;
+      }
+
+      .purchase-dialog-hint {
+        font-size: $font-sm;
+        color: $text-secondary;
+      }
+    }
+
+    .purchase-dialog-footer {
       display: flex;
       gap: $spacing-md;
       padding: $spacing-md $spacing-lg;

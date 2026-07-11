@@ -3,7 +3,6 @@
  */
 const db = require('../config/database');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
-const moment = require('moment');
 
 /**
  * 生成商品ID: prod-xxxxx
@@ -24,18 +23,15 @@ function generateSkuId() {
 }
 
 /**
- * 生成采购订单ID
- */
-function generatePurchaseOrderId() {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 6);
-  return `purchase-${timestamp}${random}`;
-}
-
-/**
  * 将数据库 snake_case 行转为 camelCase 商品对象（含 skus 数组）
  */
 function mapProductRow(row) {
+  // 兼容旧图片路径：/uploads/xxx -> /api/uploads/xxx
+  let imageUrl = row.image || '';
+  if (imageUrl && imageUrl.startsWith('/uploads/') && !imageUrl.startsWith('/api/uploads/')) {
+    imageUrl = '/api' + imageUrl;
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -44,7 +40,7 @@ function mapProductRow(row) {
     status: row.status,
     price: parseFloat(row.price),
     costPrice: parseFloat(row.cost_price),
-    image: row.image,
+    image: imageUrl,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -181,7 +177,6 @@ const createProduct = async (req, res, next) => {
     }
 
     const productId = generateProductId();
-    const skuIdMap = []; // 保存每个 SKU 的 ID
     await db.transaction(async (connection) => {
       await connection.query(
         'INSERT INTO products (id, name, category, supplier_id, status, price, cost_price, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -190,54 +185,10 @@ const createProduct = async (req, res, next) => {
 
       for (const sku of skus) {
         const skuId = generateSkuId();
-        skuIdMap.push(skuId);
         await connection.query(
           'INSERT INTO skus (id, product_id, color, size, stock, price) VALUES (?, ?, ?, ?, ?, ?)',
           [skuId, productId, sku.color, sku.size, sku.stock || 0, sku.price || price]
         );
-      }
-
-      // 如果指定了供应商，自动生成采购订单
-      if (supplierId) {
-        const [supplierRows] = await connection.query(
-          'SELECT id, name FROM suppliers WHERE id = ?',
-          [supplierId]
-        );
-        const supplierInfo = supplierRows?.[0];
-
-        if (supplierInfo) {
-          const orderId = generatePurchaseOrderId();
-
-          // 在事务内生成订单号
-          const date = moment().format('YYYYMMDD');
-          const [countResult] = await connection.query(
-            `SELECT COUNT(*) as count FROM purchase_orders WHERE DATE(created_at) = CURDATE()`
-          );
-          const count = (countResult?.[0]?.count || 0) + 1;
-          const orderNo = `CG${date}${String(count).padStart(4, '0')}`;
-
-          const totalAmount = skus.reduce((sum, sku) => {
-            return sum + (costPrice || 0) * (sku.stock || 0);
-          }, 0);
-
-          await connection.query(
-            `INSERT INTO purchase_orders (id, order_no, supplier, supplier_id, total_amount, status, remark)
-             VALUES (?, ?, ?, ?, ?, 'completed', ?)`,
-            [orderId, orderNo, supplierInfo.name, supplierId, totalAmount, '商品入库自动生成']
-          );
-
-          for (let i = 0; i < skus.length; i++) {
-            const sku = skus[i];
-            const itemId = generatePurchaseOrderId();
-            const skuCostPrice = costPrice || 0;
-            const skuStock = sku.stock || 0;
-            await connection.query(
-              `INSERT INTO purchase_order_items (id, order_id, product_id, sku_id, product_name, color, size, quantity, cost_price, total_price)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [itemId, orderId, productId, skuIdMap[i] || null, name, sku.color || '', sku.size || '', skuStock, skuCostPrice, skuCostPrice * skuStock]
-            );
-          }
-        }
       }
     });
 

@@ -48,10 +48,13 @@
           @click="selectProduct(product)"
         >
           <!-- 商品图片 -->
-          <div class="product-image">
+          <div class="product-image" @click.stop="showImagePreview(product.image)">
             <img v-if="product.image" :src="product.image" alt="" loading="lazy" />
             <div v-else class="image-placeholder">
               <t-icon name="image" />
+            </div>
+            <div v-if="product.image" class="image-zoom-icon">
+              <t-icon name="zoom-in" />
             </div>
           </div>
 
@@ -93,75 +96,24 @@
       </div>
     </div>
 
-    <!-- SKU 选择弹窗 -->
+
+
+    <!-- 图片预览弹窗 -->
     <t-dialog
-      v-model:visible="showSkuPopup"
+      v-model:visible="showImagePreviewDialog"
       :header="null"
       :footer="false"
+      :closeBtn="false"
       placement="center"
-      width="95%"
       :attach="false"
-      class="sku-dialog"
+      width="90%"
+      class="image-preview-dialog"
+      @click="showImagePreviewDialog = false"
     >
-      <div class="sku-popup" v-if="selectedProduct">
-        <!-- 商品信息头部 -->
-        <div class="popup-header">
-          <div class="header-left">
-            <div class="product-image">
-              <img v-if="selectedProduct.image" :src="selectedProduct.image" alt="" />
-              <div v-else class="image-placeholder">
-                <t-icon name="image" />
-              </div>
-            </div>
-            <div class="product-info">
-              <div class="product-name">{{ selectedProduct.name }}</div>
-              <div class="product-meta">
-                <span class="meta-brand">{{ selectedProduct.brand || '无品牌' }}</span>
-              </div>
-              <div class="product-price">
-                <span class="price-symbol">¥</span>
-                <span class="price-value">{{ selectedProduct.price }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- SKU 选择器 -->
-        <div class="sku-selector-section">
-          <sku-matrix
-            :skus="selectedProduct.skus"
-            :selected-quantities="selectedQuantities"
-            @update:selected-quantities="updateQuantities"
-            @select="onSkuSelect"
-          />
-        </div>
-
-        <!-- 底部操作 -->
-        <div class="popup-footer">
-          <div class="footer-summary">
-            <div class="summary-item">
-              <span class="summary-label">已选数量</span>
-              <span class="summary-value">{{ totalQuantity }}件</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">总金额</span>
-              <span class="summary-value">¥{{ selectedTotalPrice }}</span>
-            </div>
-          </div>
-          <div class="footer-actions">
-            <t-button
-              theme="primary"
-              size="large"
-              @click="addToCart"
-              class="confirm-btn"
-              :disabled="totalQuantity === 0"
-            >
-              <span class="btn-content">
-                <t-icon name="cart" />
-                <span class="btn-text">加入购物车</span>
-              </span>
-            </t-button>
-          </div>
+      <div class="image-preview-container" @click="showImagePreviewDialog = false">
+        <img :src="previewImageUrl" alt="商品图片" class="preview-image" />
+        <div class="preview-close">
+          <t-icon name="close" />
         </div>
       </div>
     </t-dialog>
@@ -191,7 +143,6 @@ import { useRouter } from 'vue-router'
 import { Input, Dialog, Button, Icon } from 'tdesign-vue-next'
 import { useProductStore } from '@/store/product'
 import { useBillingStore } from '@/store/billing'
-import SkuMatrix from '@/components/SkuMatrix.vue'
 
 const router = useRouter()
 const productStore = useProductStore()
@@ -232,36 +183,16 @@ const filteredProducts = computed(() => {
   return products
 })
 
-// SKU 选择弹窗
-const showSkuPopup = ref(false)
-const selectedProduct = ref(null)
-const selectedQuantities = ref({})
+// 图片预览弹窗
+const showImagePreviewDialog = ref(false)
+const previewImageUrl = ref('')
 
-const selectedItems = computed(() => {
-  return Object.entries(selectedQuantities.value)
-    .filter(([_, q]) => q > 0)
-    .map(([key, quantity]) => {
-      const [color, size] = key.split('-')
-      const sku = selectedProduct.value?.skus.find(s => s.color === color && s.size === size)
-      return {
-        skuId: sku?.id,
-        color,
-        size,
-        quantity,
-        price: sku?.price || selectedProduct.value?.price
-      }
-    })
-})
-
-// 总数量
-const totalQuantity = computed(() =>
-  selectedItems.value.reduce((sum, item) => sum + item.quantity, 0)
-)
-
-// 已选商品总金额
-const selectedTotalPrice = computed(() =>
-  selectedItems.value.reduce((sum, item) => sum + item.price * item.quantity, 0)
-)
+const showImagePreview = (imageUrl) => {
+  if (imageUrl) {
+    previewImageUrl.value = imageUrl
+    showImagePreviewDialog.value = true
+  }
+}
 
 // 购物车
 const cartItemCount = computed(() => billingStore.cartItemCount)
@@ -274,56 +205,7 @@ const onCategoryChange = (value) => {
 
 // 选择商品
 const selectProduct = (product) => {
-  selectedProduct.value = product
-  selectedQuantities.value = {}
-  showSkuPopup.value = true
-}
-
-// 关闭 SKU 弹窗
-const closeSkuPopup = () => {
-  showSkuPopup.value = false
-  selectedProduct.value = null
-  selectedQuantities.value = {}
-}
-
-// 更新数量
-const updateQuantities = (quantities) => {
-  selectedQuantities.value = quantities
-}
-
-// SKU 选择回调
-const onSkuSelect = (sku, quantity) => {
-  // 可以在这里处理单个 SKU 的选择逻辑
-}
-
-// 增减商品数量
-const decreaseItem = (item) => {
-  const key = `${item.color}-${item.size}`
-  if (selectedQuantities.value[key] > 1) {
-    selectedQuantities.value[key]--
-  } else {
-    selectedQuantities.value[key] = 0
-  }
-}
-
-const increaseItem = (item) => {
-  const key = `${item.color}-${item.size}`
-  const sku = selectedProduct.value?.skus.find(s => s.id === item.skuId)
-  if (sku && selectedQuantities.value[key] < sku.stock) {
-    selectedQuantities.value[key]++
-  }
-}
-
-// 加入购物车
-const addToCart = () => {
-  selectedItems.value.forEach(item => {
-    const sku = selectedProduct.value?.skus.find(s => s.id === item.skuId)
-    if (sku && item.quantity > 0) {
-      billingStore.addToCart(selectedProduct.value, sku, item.quantity, item.price)
-    }
-  })
-
-  closeSkuPopup()
+  router.push(`/billing/product/${product.id}`)
 }
 
 // 跳转购物车
@@ -474,6 +356,7 @@ onMounted(() => {
           background: $bg-page;
           position: relative;
           overflow: hidden;
+          cursor: pointer;
 
           @media (min-width: 768px) {
             height: 180px;
@@ -482,7 +365,8 @@ onMounted(() => {
           img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
+            background: $bg-page;
           }
 
           .image-placeholder {
@@ -495,6 +379,24 @@ onMounted(() => {
 
             .t-icon {
               font-size: 48px;
+            }
+          }
+
+          .image-zoom-icon {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            width: 28px;
+            height: 28px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+
+            .t-icon {
+              font-size: 14px;
             }
           }
         }
@@ -618,248 +520,6 @@ onMounted(() => {
             &:hover {
               background: $primary-color;
               transform: scale(1.1);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // SKU 选择弹窗
-  .sku-dialog {
-    :deep(.t-dialog) {
-      max-width: 600px;
-      border-radius: $radius-xl;
-      overflow: hidden;
-
-      @media (max-width: 767px) {
-        max-width: 95%;
-        border-radius: $radius-lg $radius-lg 0 0;
-        margin-bottom: 0;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        max-height: 85vh;
-      }
-    }
-
-    .sku-popup {
-      max-height: 85vh;
-      overflow-y: auto;
-
-      @media (min-width: 768px) {
-        max-height: 70vh;
-      }
-
-      // 商品信息头部
-      .popup-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: $spacing-md $spacing-lg;
-        background: linear-gradient(135deg, rgba($primary-color, 0.08), rgba($primary-color, 0.03));
-        border-bottom: 1px solid $border-light;
-
-        @media (min-width: 768px) {
-          padding: $spacing-lg;
-        }
-
-        .header-left {
-          display: flex;
-          gap: $spacing-md;
-          flex: 1;
-
-          .product-image {
-            width: 60px;
-            height: 60px;
-            border-radius: $radius-md;
-            overflow: hidden;
-            background: $bg-page;
-
-            @media (min-width: 768px) {
-              width: 80px;
-              height: 80px;
-            }
-
-            img {
-              width: 100%;
-              height: 100%;
-              object-fit: cover;
-            }
-
-            .image-placeholder {
-              width: 100%;
-              height: 100%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              color: $text-placeholder;
-
-              .t-icon {
-                font-size: 24px;
-
-                @media (min-width: 768px) {
-                  font-size: 32px;
-                }
-              }
-            }
-          }
-
-          .product-info {
-            flex: 1;
-
-            .product-name {
-              font-size: $font-md;
-              font-weight: 600;
-              color: $text-primary;
-              margin-bottom: $spacing-xs;
-              line-height: 1.4;
-              text-align: left;
-
-              @media (min-width: 768px) {
-                font-size: $font-lg;
-              }
-            }
-
-            .product-meta {
-              font-size: $font-sm;
-              color: $text-secondary;
-              margin-bottom: $spacing-xs;
-              text-align: left;
-
-              @media (min-width: 768px) {
-                margin-bottom: $spacing-sm;
-              }
-
-              .meta-divider {
-                margin: 0 $spacing-xs;
-                color: $text-placeholder;
-              }
-            }
-
-            .product-price {
-              display: flex;
-              align-items: baseline;
-
-              .price-symbol {
-                font-size: $font-sm;
-                color: $primary-color;
-                font-weight: 500;
-              }
-
-              .price-value {
-                font-size: $font-lg;
-                color: $primary-color;
-                font-weight: 600;
-                margin-left: 2px;
-
-                @media (min-width: 768px) {
-                  font-size: $font-xl;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // SKU选择器区域
-      .sku-selector-section {
-        // 无需额外样式，SkuMatrix组件自带样式
-      }
-
-      // 底部操作区
-      .popup-footer {
-        display: flex;
-        flex-direction: column;
-        gap: $spacing-md;
-        padding: $spacing-md $spacing-lg;
-        background: white;
-        border-top: 1px solid $border-light;
-        position: sticky;
-        bottom: 0;
-        z-index: 10;
-
-        @media (min-width: 768px) {
-          flex-direction: row;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .footer-summary {
-          display: flex !important;
-          flex-direction: row !important;
-          align-items: center;
-          justify-content: flex-start;
-          gap: $spacing-md;
-          flex-wrap: nowrap;
-
-          @media (min-width: 768px) {
-            gap: $spacing-lg;
-          }
-
-          .summary-item {
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: center;
-            gap: $spacing-xs;
-            flex-shrink: 0;
-
-            .summary-label {
-              font-size: 16px;
-              color: $text-secondary;
-
-              @media (min-width: 768px) {
-                font-size: $font-sm;
-              }
-            }
-
-            .summary-value {
-              font-size: 16px;
-              color: $primary-color;
-              font-weight: 600;
-            }
-          }
-        }
-
-        .footer-actions {
-          display: flex;
-          justify-content: center;
-          width: 100%;
-
-          @media (min-width: 768px) {
-            width: auto;
-          }
-
-          .confirm-btn {
-            width: 100%;
-            max-width: 300px;
-
-            @media (min-width: 768px) {
-              width: auto;
-            }
-
-            :deep(.btn-content) {
-              display: inline-flex !important;
-              align-items: center !important;
-              justify-content: center !important;
-              gap: 6px;
-
-              .t-icon,
-              [class*="t-icon"],
-              svg {
-                font-size: 18px;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-              }
-
-              .btn-text {
-                line-height: 1;
-                display: flex !important;
-                align-items: center !important;
-                font-size: $font-md;
-              }
             }
           }
         }
@@ -991,6 +651,64 @@ onMounted(() => {
     .product-section {
       max-width: 1200px;
       margin: 0 auto;
+    }
+  }
+
+  // 图片预览弹窗
+  .image-preview-dialog {
+    :deep(.t-dialog) {
+      background: transparent;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    :deep(.t-dialog__content) {
+      background: transparent;
+      padding: 0;
+    }
+
+    :deep(.t-dialog__header) {
+      display: none;
+    }
+
+    :deep(.t-dialog__close) {
+      display: none;
+    }
+
+    .image-preview-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      cursor: pointer;
+
+      .preview-image {
+        max-width: 100%;
+        max-height: 80vh;
+        object-fit: contain;
+        border-radius: $radius-md;
+        background: $bg-page;
+      }
+
+      .preview-close {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 36px;
+        height: 36px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        cursor: pointer;
+
+        .t-icon {
+          font-size: 20px;
+        }
+      }
     }
   }
 }

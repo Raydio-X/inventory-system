@@ -14,8 +14,8 @@ const uploadProductImage = (req, res, next) => {
       throw new ValidationError('请选择要上传的图片');
     }
 
-    // 返回图片URL
-    const imageUrl = `/uploads/${req.file.filename}`;
+    // 返回图片URL（使用 /api/uploads 前缀，走 API 代理路径）
+    const imageUrl = `/api/uploads/${req.file.filename}`;
     
     res.json({
       success: true,

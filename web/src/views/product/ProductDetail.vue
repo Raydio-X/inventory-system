@@ -164,6 +164,9 @@
         <t-button theme="default" size="large" @click="goToEdit">
           编辑
         </t-button>
+        <t-button theme="warning" variant="outline" size="large" @click="goToPurchase">
+          采购
+        </t-button>
       </div>
       <div class="action-right">
         <t-button theme="primary" size="large" @click="addToCart">
@@ -258,6 +261,14 @@ const loadProduct = async () => {
 
 const goToEdit = () => {
   router.push(`/products/edit/${productId.value}`)
+}
+
+const goToPurchase = () => {
+  const query = { productId: productId.value }
+  if (product.value?.supplierId) {
+    query.supplierId = product.value.supplierId
+  }
+  router.push({ path: '/purchases/add', query })
 }
 
 const addToCart = () => {
@@ -704,6 +715,7 @@ onMounted(() => {
     right: 0;
     display: flex;
     justify-content: space-between;
+    gap: $spacing-md;
     padding: $spacing-md $spacing-lg;
     padding-bottom: calc($spacing-md + $safe-area-bottom);
     background: $bg-white;
@@ -712,20 +724,21 @@ onMounted(() => {
 
     .action-left,
     .action-right {
-      flex: 1;
+      display: flex;
+      gap: $spacing-sm;
 
       .t-button {
-        width: 100%;
+        flex: 1;
         border-radius: $radius-md;
       }
     }
 
     .action-left {
-      margin-right: $spacing-sm;
+      flex: 1.2;
     }
 
     .action-right {
-      margin-left: $spacing-sm;
+      flex: 1;
     }
   }
 }

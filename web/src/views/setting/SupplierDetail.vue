@@ -60,7 +60,13 @@
             <t-icon name="order" />
             <span>采购记录</span>
           </div>
-          <span class="section-count">{{ supplier.orders?.length || 0 }}笔</span>
+          <div class="section-actions">
+            <span class="section-count">{{ supplier.orders?.length || 0 }}笔</span>
+            <t-button theme="primary" size="small" @click="goToPurchase">
+              <template #icon><t-icon name="add" /></template>
+              新增采购
+            </t-button>
+          </div>
         </div>
 
         <div v-if="!supplier.orders || supplier.orders.length === 0" class="empty-state">
@@ -218,6 +224,10 @@ const fetchSupplier = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const goToPurchase = () => {
+  router.push({ path: '/purchases/add', query: { supplierId: route.params.id } })
 }
 
 onMounted(() => {
@@ -463,6 +473,13 @@ onMounted(() => {
         margin-left: auto;
         font-size: 12px;
         color: $text-secondary;
+        margin-right: $spacing-sm;
+      }
+
+      .section-actions {
+        display: flex;
+        align-items: center;
+        margin-left: auto;
       }
     }
 

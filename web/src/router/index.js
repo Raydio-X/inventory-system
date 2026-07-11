@@ -38,6 +38,12 @@ const routes = [
     meta: { title: '批发开单' }
   },
   {
+    path: '/billing/product/:id',
+    name: 'BillingSkuSelect',
+    component: () => import('@/views/billing/BillingSkuSelect.vue'),
+    meta: { title: '选择规格', hideTabBar: true }
+  },
+  {
     path: '/return',
     name: 'Return',
     component: () => import('@/views/return/Return.vue'),
@@ -128,6 +134,12 @@ const routes = [
     meta: { title: '库存盘点', hideTabBar: true }
   },
   {
+    path: '/inventory/warning',
+    name: 'InventoryWarning',
+    component: () => import('@/views/inventory/InventoryWarning.vue'),
+    meta: { title: '库存预警', hideTabBar: true }
+  },
+  {
     path: '/mine',
     name: 'Mine',
     component: () => import('@/views/mine/Mine.vue'),
@@ -144,6 +156,12 @@ const routes = [
     name: 'SupplierDetail',
     component: () => import('@/views/setting/SupplierDetail.vue'),
     meta: { title: '供应商详情', hideTabBar: true }
+  },
+  {
+    path: '/purchases/add',
+    name: 'PurchaseAdd',
+    component: () => import('@/views/purchase/PurchaseAdd.vue'),
+    meta: { title: '新增采购', hideTabBar: true }
   },
   {
     path: '/mine/settings',

@@ -6,7 +6,7 @@
       </keep-alive>
     </router-view>
 
-    <!-- 底部导航�?-->
+    <!-- 底部导航-->
     <div v-if="showTabBar" class="tab-bar-container">
       <div class="tab-bar">
         <div

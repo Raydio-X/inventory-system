@@ -882,13 +882,38 @@ class MySQLDataStore {
         [orderId]
       );
 
-      // 更新库存
+      // 更新库存 + 计算成本价
       for (const item of items) {
         if (item.sku_id) {
+          // 获取当前库存和成本价用于移动加权平均计算
+          const [skuRows] = await connection.execute(
+            'SELECT stock, price FROM skus WHERE id = ?',
+            [item.sku_id]
+          );
+          const currentSku = skuRows[0];
+
+          // 更新SKU库存
           await connection.execute(
             'UPDATE skus SET stock = stock + ? WHERE id = ?',
             [item.quantity, item.sku_id]
           );
+
+          // 移动加权平均法计算商品成本价
+          if (currentSku && item.cost_price > 0) {
+            const oldStock = currentSku.stock;
+            const oldPrice = Number(currentSku.price);
+            const newStock = oldStock + item.quantity;
+            const newCostPrice = Number(item.cost_price);
+            const avgPrice = newStock > 0
+              ? (oldStock * oldPrice + item.quantity * newCostPrice) / newStock
+              : newCostPrice;
+
+            // 更新商品成本价
+            await connection.execute(
+              'UPDATE products SET cost_price = ? WHERE id = ?',
+              [Math.round(avgPrice * 100) / 100, item.product_id]
+            );
+          }
 
           // 记录库存流水
           const logId = this.generateId('inv-');
@@ -898,34 +923,8 @@ class MySQLDataStore {
             [logId, item.sku_id, item.quantity, orderId, currentOrder.order_no]
           );
         } else {
-          // 如果没有SKU，创建新SKU
-          const skuId = this.generateId('sku-');
-          await connection.execute(
-            `INSERT INTO skus (id, product_id, color, size, stock, price)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              skuId,
-              item.product_id,
-              item.color,
-              item.size,
-              item.quantity,
-              0 // 价格需要后续设置
-            ]
-          );
-
-          // 更新采购明细的SKU ID
-          await connection.execute(
-            'UPDATE purchase_order_items SET sku_id = ? WHERE id = ?',
-            [skuId, item.id]
-          );
-
-          // 记录库存流水
-          const logId = this.generateId('inv-');
-          await connection.execute(
-            `INSERT INTO inventory_logs (id, sku_id, type, quantity, order_id, order_no, remark)
-             VALUES (?, ?, 'purchase_in', ?, ?, ?, '采购入库')`,
-            [logId, skuId, item.quantity, orderId, currentOrder.order_no]
-          );
+          // 采购明细必须关联已有SKU，无SKU的明细跳过入库
+          continue;
         }
       }
 

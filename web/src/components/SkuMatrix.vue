@@ -41,57 +41,64 @@
         :class="['sku-card', getStockStatus(sku.stock), { selected: getQuantity(sku) > 0 }]"
         @click="handleCardClick(sku)"
       >
-        <!-- 规格信息 -->
-        <div class="card-header">
-          <div class="sku-spec">
-            <span class="spec-color">{{ sku.color }}</span>
-            <span class="spec-divider">/</span>
-            <span class="spec-size">{{ sku.size }}</span>
+        <!-- 左侧信息 -->
+        <div class="card-left">
+          <!-- 规格信息 -->
+          <div class="card-header">
+            <div class="sku-spec">
+              <span class="spec-color">{{ sku.color }}</span>
+              <span class="spec-divider">/</span>
+              <span class="spec-size">{{ sku.size }}</span>
+            </div>
           </div>
+
+          <!-- 价格与库存 -->
+          <div class="card-detail">
+            <div class="card-price">
+              <span class="price-symbol">¥</span>
+              <span class="price-value">{{ sku.price }}</span>
+            </div>
+            <div class="card-stock">
+              <span class="stock-label">库存</span>
+              <span class="stock-value">{{ sku.stock }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：库存预警 + 数量控制 -->
+        <div class="card-right">
           <div class="stock-status" :class="getStockStatus(sku.stock)">
             <t-icon :name="getStockIcon(sku.stock)" />
             <span>{{ getStockText(sku.stock) }}</span>
           </div>
-        </div>
 
-        <!-- 价格信息 -->
-        <div class="card-price">
-          <span class="price-symbol">¥</span>
-          <span class="price-value">{{ sku.price }}</span>
-        </div>
+          <!-- 数量控制 -->
+          <div class="quantity-control" @click.stop>
+            <!-- 减少按钮 -->
+            <div
+              v-if="getQuantity(sku) > 0"
+              class="control-btn decrease-btn"
+              @click.stop="quickAdd(sku, -1)"
+            >
+              <t-icon name="remove" />
+            </div>
 
-        <!-- 库存信息 -->
-        <div class="card-stock">
-          <span class="stock-label">库存</span>
-          <span class="stock-value">{{ sku.stock }}</span>
-        </div>
+            <!-- 数量输入框 -->
+            <t-input-number
+              :value="getQuantity(sku)"
+              :min="0"
+              :max="sku.stock"
+              size="small"
+              theme="normal"
+              class="quantity-input"
+              @change="(value) => handleQuantityChange(sku, value)"
+              @click.stop
+            />
 
-        <!-- 数量控制区 -->
-        <div class="quantity-control">
-          <!-- 减少按钮 -->
-          <div
-            v-if="getQuantity(sku) > 0"
-            class="control-btn decrease-btn"
-            @click.stop="quickAdd(sku, -1)"
-          >
-            <t-icon name="remove" />
-          </div>
-
-          <!-- 数量输入框 -->
-          <t-input-number
-            :value="getQuantity(sku)"
-            :min="0"
-            :max="sku.stock"
-            size="small"
-            theme="normal"
-            class="quantity-input"
-            @change="(value) => handleQuantityChange(sku, value)"
-            @click.stop
-          />
-
-          <!-- 增加按钮 -->
-          <div class="control-btn increase-btn" @click.stop="quickAdd(sku, 1)">
-            <t-icon name="add" />
+            <!-- 增加按钮 -->
+            <div class="control-btn increase-btn" @click.stop="quickAdd(sku, 1)">
+              <t-icon name="add" />
+            </div>
           </div>
         </div>
       </div>
@@ -333,31 +340,28 @@ const clearAll = () => {
     }
   }
 
-  // SKU卡片网格
+  // SKU卡片列表（纵向排列）
   .sku-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: $spacing-md;
-    padding: $spacing-lg;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+    padding: $spacing-md $spacing-lg;
     max-height: 400px;
     overflow-y: auto;
-
-    @media (min-width: 768px) {
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    }
 
     .sku-card {
       background: $bg-white;
       border-radius: $radius-lg;
-      padding: $spacing-md;
+      padding: $spacing-md $spacing-lg;
       cursor: pointer;
       transition: all 0.2s;
       border: 2px solid $border-light;
-      position: relative;
-      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: $spacing-md;
 
       &:hover {
-        transform: translateY(-2px);
         box-shadow: $shadow-md;
       }
 
@@ -372,7 +376,6 @@ const clearAll = () => {
         cursor: not-allowed;
 
         &:hover {
-          transform: none;
           box-shadow: none;
         }
       }
@@ -405,37 +408,93 @@ const clearAll = () => {
       &.selected {
         border-color: $primary-color;
         background: rgba($primary-color, 0.05);
+      }
 
-        .quick-actions {
-          opacity: 1;
+      // 左侧信息区
+      .card-left {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+
+        .card-header {
+          display: flex;
+          align-items: center;
+
+          .sku-spec {
+            font-size: $font-md;
+            color: $text-primary;
+            font-weight: 600;
+            white-space: nowrap;
+            flex-shrink: 0;
+
+            .spec-divider {
+              color: $text-placeholder;
+              margin: 0 2px;
+            }
+          }
+        }
+
+        .card-detail {
+          display: flex;
+          align-items: center;
+          gap: $spacing-lg;
+
+          .card-price {
+            display: flex;
+            align-items: center;
+
+            .price-symbol {
+              font-size: 14px;
+              color: $primary-color;
+              font-weight: 500;
+            }
+
+            .price-value {
+              font-size: 14px;
+              color: $primary-color;
+              font-weight: 600;
+              margin-left: 2px;
+            }
+          }
+
+          .card-stock {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+
+            .stock-label {
+              font-size: 14px;
+              color: $text-secondary;
+            }
+
+            .stock-value {
+              font-size: 14px;
+              color: $text-primary;
+              font-weight: 600;
+            }
+          }
         }
       }
 
-      // 卡片头部
-      .card-header {
+      // 右侧：库存预警 + 数量控制
+      .card-right {
         display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: $spacing-sm;
-
-        .sku-spec {
-          font-size: $font-sm;
-          color: $text-primary;
-          font-weight: 500;
-
-          .spec-divider {
-            color: $text-placeholder;
-            margin: 0 2px;
-          }
-        }
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+        flex-shrink: 0;
 
         .stock-status {
           display: flex;
           align-items: center;
           gap: 4px;
           font-size: $font-xs;
-          padding: 2px 6px;
+          padding: 2px 8px;
           border-radius: $radius-sm;
+          white-space: nowrap;
+          flex-shrink: 0;
 
           .t-icon {
             font-size: 12px;
@@ -461,125 +520,80 @@ const clearAll = () => {
             color: $success-color;
           }
         }
-      }
 
-      // 价格信息
-      .card-price {
-        display: flex;
-        align-items: baseline;
-        margin-bottom: $spacing-sm;
-
-        .price-symbol {
-          font-size: $font-sm;
-          color: $primary-color;
-          font-weight: 500;
-        }
-
-        .price-value {
-          font-size: $font-lg;
-          color: $primary-color;
-          font-weight: 600;
-          margin-left: 2px;
-        }
-      }
-
-      // 库存信息
-      .card-stock {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: $font-xs;
-
-        .stock-label {
-          color: $text-secondary;
-        }
-
-        .stock-value {
-          color: $text-primary;
-          font-weight: 500;
-        }
-      }
-
-      // 数量控制区
-      .quantity-control {
-        position: absolute;
-        bottom: $spacing-sm;
-        right: $spacing-sm;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(255, 255, 255, 0.95);
-        padding: 4px;
-        border-radius: $radius-md;
-        box-shadow: $shadow-sm;
-        border: 1px solid $border-light;
-
-        .control-btn {
-          width: 26px;
-          height: 26px;
-          border-radius: $radius-sm;
+        .quantity-control {
           display: flex;
           align-items: center;
-          justify-content: center;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s;
+          gap: 4px;
+          background: $bg-page;
+          padding: 4px;
+          border-radius: $radius-md;
+          border: 1px solid $border-light;
+          flex-shrink: 0;
 
-          &:hover {
-            transform: scale(1.08);
-          }
-
-          &:active {
-            transform: scale(0.95);
-          }
-
-          &.decrease-btn {
-            background: $bg-page;
-            color: $text-secondary;
-            border: 1px solid $border-light;
-
-            &:hover {
-              background: rgba($error-color, 0.1);
-              color: $error-color;
-              border-color: rgba($error-color, 0.3);
-            }
-          }
-
-          &.increase-btn {
-            background: $primary-color;
-            color: white;
-            border: 1px solid transparent;
-
-            &:hover {
-              background: rgba($primary-color, 0.85);
-            }
-          }
-
-          .t-icon {
+          .control-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: $radius-sm;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+
+            &:active {
+              transform: scale(0.95);
+            }
+
+            &.decrease-btn {
+              background: $bg-white;
+              color: $text-secondary;
+              border: 1px solid $border-light;
+
+              &:hover {
+                background: rgba($error-color, 0.1);
+                color: $error-color;
+                border-color: rgba($error-color, 0.3);
+              }
+            }
+
+            &.increase-btn {
+              background: $primary-color;
+              color: white;
+              border: 1px solid transparent;
+
+              &:hover {
+                background: rgba($primary-color, 0.85);
+              }
+            }
+
+            .t-icon {
+              font-size: 14px;
+            }
           }
-        }
 
-        .quantity-input {
-          width: 60px;
+          .quantity-input {
+            width: 50px;
 
-          :deep(.t-input-number__input) {
-            width: 100%;
-            text-align: center;
-            font-size: $font-sm;
-            font-weight: 600;
-            color: $text-primary;
-            padding: 0 4px;
-          }
+            :deep(.t-input-number__input) {
+              width: 100%;
+              text-align: center;
+              font-size: $font-sm;
+              font-weight: 600;
+              color: $text-primary;
+              padding: 0 2px;
+            }
 
-          :deep(.t-input-number__increase),
-          :deep(.t-input-number__decrease) {
-            display: none;
+            :deep(.t-input-number__increase),
+            :deep(.t-input-number__decrease) {
+              display: none;
+            }
           }
         }
       }
 
-      // 移除原来的快捷操作按钮样式
+      // 隐藏旧的快捷操作按钮样式
       .quick-actions {
         display: none;
       }

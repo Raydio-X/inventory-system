@@ -22,6 +22,7 @@ const returnRoutes = require('./routes/returns');
 const authRoutes = require('./routes/auth');
 const uploadRoutes = require('./routes/upload');
 const supplierRoutes = require('./routes/suppliers');
+const purchaseRoutes = require('./routes/purchases');
 
 // 导入中间件
 const errorHandler = require('./middleware/errorHandler');
@@ -39,6 +40,7 @@ app.use(express.urlencoded({ extended: true })); // URL编码解析
 
 // 静态文件服务 - 提供上传图片的访问
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 自定义中间件
 app.use(requestLogger);
@@ -54,6 +56,7 @@ app.use('/api/returns', returnRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/suppliers', supplierRoutes);
+app.use('/api/purchases', purchaseRoutes);
 
 // 健康检查接口
 app.get('/api/health', async (req, res) => {

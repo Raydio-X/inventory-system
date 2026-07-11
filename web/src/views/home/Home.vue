@@ -20,7 +20,7 @@
         <div class="stat-value">{{ formatAmount(todayStats.debt) }}</div>
         <div class="stat-label">待收欠款</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card warning" @click="goTo('/inventory/warning')">
         <div class="stat-value">{{ todayStats.warning }}</div>
         <div class="stat-label">库存预警</div>
       </div>
@@ -36,7 +36,7 @@
         </div>
         <div class="action-item" @click="goTo('/suppliers')">
           <t-icon name="store" class="action-icon" />
-          <span class="action-label">供应商管理</span>
+          <span class="action-label">供应商</span>
         </div>
         <div class="action-item" @click="goTo('/debt')">
           <t-icon name="wallet" class="action-icon" />
@@ -305,6 +305,12 @@ onMounted(() => {
       }
 
       &.warning {
+        cursor: pointer;
+
+        &:active {
+          transform: scale(0.98);
+        }
+
         .stat-value {
           color: $warning-color;
         }
