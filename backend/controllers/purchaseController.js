@@ -344,6 +344,96 @@ const confirmPurchase = async (req, res, next) => {
 };
 
 /**
+ * 更新采购订单（仅允许更新待入库状态的订单）
+ */
+const updatePurchaseOrder = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { items, remark } = req.body;
+
+    const [existing] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    if (!existing) {
+      throw new NotFoundError('采购订单不存在');
+    }
+
+    if (existing.status === 'completed') {
+      throw new ValidationError('已入库的采购订单不能修改');
+    }
+
+    if (!items || items.length === 0) {
+      throw new ValidationError('采购商品不能为空');
+    }
+
+    // 验证每个明细的商品和SKU存在性
+    for (const item of items) {
+      if (!item.productId) {
+        throw new ValidationError('采购明细必须关联商品');
+      }
+
+      const [product] = await db.query('SELECT id, status FROM products WHERE id = ?', [item.productId]);
+      if (!product) {
+        throw new ValidationError(`商品 ${item.productId} 不存在`);
+      }
+      if (product.status === 'deleted') {
+        throw new ValidationError(`商品 ${item.productName || item.productId} 已被删除，无法采购`);
+      }
+
+      if (!item.skuId) {
+        throw new ValidationError(`商品 ${item.productName || ''} 的采购明细必须关联SKU`);
+      }
+
+      const [sku] = await db.query('SELECT id, product_id FROM skus WHERE id = ? AND product_id = ?', [item.skuId, item.productId]);
+      if (!sku) {
+        throw new ValidationError(`SKU ${item.skuId} 不存在或不属于该商品`);
+      }
+    }
+
+    // 计算总金额
+    const totalAmount = items.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 0), 0);
+
+    await db.transaction(async (connection) => {
+      // 更新订单总金额和备注
+      await connection.execute(
+        'UPDATE purchase_orders SET total_amount = ?, remark = ? WHERE id = ?',
+        [totalAmount, remark || existing.remark, id]
+      );
+
+      // 删除原有明细
+      await connection.execute('DELETE FROM purchase_order_items WHERE order_id = ?', [id]);
+
+      // 插入新明细
+      for (const item of items) {
+        const itemId = generatePurchaseItemId();
+        const costPrice = item.costPrice || 0;
+        const quantity = item.quantity || 0;
+        await connection.execute(
+          `INSERT INTO purchase_order_items (id, order_id, product_id, sku_id, product_name, color, size, quantity, cost_price, total_price)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [itemId, id, item.productId, item.skuId, item.productName || '', item.color || '', item.size || '', quantity, costPrice, costPrice * quantity]
+        );
+      }
+    });
+
+    // 查询更新后的订单
+    const [updatedOrder] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const updatedItems = await db.query('SELECT * FROM purchase_order_items WHERE order_id = ?', [id]);
+
+    const data = {
+      ...mapPurchaseOrderRow(updatedOrder),
+      items: updatedItems.map(mapPurchaseItemRow)
+    };
+
+    res.json({
+      success: true,
+      data,
+      message: '采购订单更新成功'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * 删除采购订单（仅允许删除待入库状态的订单）
  */
 const deletePurchaseOrder = async (req, res, next) => {
@@ -377,6 +467,7 @@ module.exports = {
   getPurchaseOrders,
   getPurchaseOrderById,
   createPurchaseOrder,
+  updatePurchaseOrder,
   confirmPurchase,
   deletePurchaseOrder
 };

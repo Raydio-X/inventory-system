@@ -61,6 +61,23 @@ router.post('/',
 );
 
 /**
+ * 更新采购订单（仅允许更新待入库状态的订单）
+ * PUT /api/purchases/:id
+ */
+router.put('/:id',
+  [
+    param('id').notEmpty().withMessage('采购订单ID不能为空'),
+    body('items').isArray({ min: 1 }).withMessage('采购商品不能为空'),
+    body('items.*.productId').notEmpty().withMessage('商品ID不能为空'),
+    body('items.*.skuId').notEmpty().withMessage('SKU ID不能为空'),
+    body('items.*.quantity').isInt({ min: 1 }).withMessage('采购数量必须大于0'),
+    body('items.*.costPrice').isFloat({ min: 0 }).withMessage('采购单价不能为负数')
+  ],
+  validate,
+  purchaseController.updatePurchaseOrder
+);
+
+/**
  * 确认采购入库
  * PUT /api/purchases/:id/confirm
  */

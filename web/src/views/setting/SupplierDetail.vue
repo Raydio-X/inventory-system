@@ -149,6 +149,22 @@
                   <span class="remark-label">备注：</span>
                   <span>{{ order.remark }}</span>
                 </div>
+
+                <!-- 操作按钮（仅待入库状态显示） -->
+                <div v-if="order.status === 'pending'" class="order-actions">
+                  <t-button theme="success" size="small" @click="openConfirmDialog(order)">
+                    <template #icon><t-icon name="check" /></template>
+                    确认入库
+                  </t-button>
+                  <t-button theme="warning" size="small" variant="outline" @click="editPurchaseOrder(order)">
+                    <template #icon><t-icon name="edit" /></template>
+                    修改
+                  </t-button>
+                  <t-button theme="danger" size="small" variant="outline" @click="openDeleteDialog(order)">
+                    <template #icon><t-icon name="delete" /></template>
+                    删除
+                  </t-button>
+                </div>
               </div>
             </transition>
           </div>
@@ -162,17 +178,86 @@
       <span class="empty-text">供应商不存在或已删除</span>
       <t-button theme="primary" @click="router.back()">返回</t-button>
     </div>
+
+    <!-- 删除确认弹窗 -->
+    <t-dialog
+      v-model:visible="deleteDialogVisible"
+      header="确认删除"
+      :footer="false"
+      :closeBtn="false"
+      placement="center"
+      :attach="false"
+      width="400px"
+      class="delete-dialog"
+    >
+      <div class="delete-dialog-content">
+        <div class="delete-icon-wrapper">
+          <t-icon name="error-circle" class="delete-icon" />
+        </div>
+        <p class="delete-title">确定要删除此采购订单吗？</p>
+        <p class="delete-hint">删除后无法恢复，但不会影响商品库存</p>
+        <div class="delete-actions">
+          <t-button theme="default" size="large" @click="deleteDialogVisible = false">取消</t-button>
+          <t-button theme="danger" size="large" :loading="deleting" @click="confirmDeleteOrder">确认删除</t-button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <!-- 入库确认弹窗 -->
+    <t-dialog
+      v-model:visible="confirmDialogVisible"
+      :header="null"
+      :footer="false"
+      :closeBtn="false"
+      placement="center"
+      :attach="false"
+      width="450px"
+      class="confirm-dialog"
+    >
+      <div class="confirm-dialog-content">
+        <div class="confirm-icon-wrapper">
+          <t-icon name="inbox" class="confirm-icon" />
+        </div>
+        <div class="confirm-title">确认将此采购订单入库？</div>
+        <div class="confirm-hint">入库后将增加商品库存并更新成本价</div>
+
+        <!-- 入库预览 -->
+        <div class="confirm-preview">
+          <div class="preview-header">入库商品明细</div>
+          <div class="preview-items">
+            <div v-for="item in confirmOrderItems" :key="item.skuId" class="preview-item">
+              <span class="preview-name">{{ item.productName }}</span>
+              <span class="preview-spec">{{ item.color }}/{{ item.size }}</span>
+              <span class="preview-qty">+{{ item.quantity }}件</span>
+            </div>
+          </div>
+          <div class="preview-total">
+            <span>入库总金额</span>
+            <span class="preview-amount">¥{{ formatAmount(confirmOrderAmount) }}</span>
+          </div>
+        </div>
+
+        <div class="confirm-actions">
+          <t-button theme="default" size="large" @click="confirmDialogVisible = false">取消</t-button>
+          <t-button theme="success" size="large" :loading="confirming" @click="doConfirmPurchase">确认入库</t-button>
+        </div>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import api from '@/utils/api'
+import { useProductStore } from '@/store/product'
+import { usePurchaseStore } from '@/store/purchase'
 
 const router = useRouter()
 const route = useRoute()
+const productStore = useProductStore()
+const purchaseStore = usePurchaseStore()
 
 const loading = ref(false)
 const supplier = ref(null)
@@ -181,6 +266,80 @@ const supplier = ref(null)
 const expandedOrders = ref({})
 const toggleOrder = (orderId) => {
   expandedOrders.value[orderId] = !expandedOrders.value[orderId]
+}
+
+// 删除弹窗状态
+const deleteDialogVisible = ref(false)
+const deleteOrderId = ref(null)
+const deleting = ref(false)
+
+// 入库确认弹窗状态
+const confirmDialogVisible = ref(false)
+const confirmOrderId = ref(null)
+const confirmOrderItems = ref([])
+const confirming = ref(false)
+
+// 入库总金额
+const confirmOrderAmount = computed(() =>
+  confirmOrderItems.value.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 0), 0)
+)
+
+// 编辑采购订单（跳转到编辑页面）
+const editPurchaseOrder = (order) => {
+  router.push({
+    path: '/purchases/add',
+    query: { orderId: order.id }
+  })
+}
+
+// 打开删除确认弹窗
+const openDeleteDialog = (order) => {
+  deleteOrderId.value = order.id
+  deleteDialogVisible.value = true
+}
+
+// 确认删除
+const confirmDeleteOrder = async () => {
+  deleting.value = true
+  try {
+    await purchaseStore.deletePurchaseOrder(deleteOrderId.value)
+    MessagePlugin.success('采购订单删除成功')
+    deleteDialogVisible.value = false
+    await fetchSupplier()
+  } catch (error) {
+    MessagePlugin.error(error.message || '删除失败')
+  } finally {
+    deleting.value = false
+  }
+}
+
+// 打开入库确认弹窗
+const openConfirmDialog = (order) => {
+  confirmOrderId.value = order.id
+  confirmOrderItems.value = order.items.map(item => ({
+    skuId: item.skuId,
+    productName: item.productName,
+    color: item.color,
+    size: item.size,
+    quantity: item.quantity,
+    costPrice: item.costPrice
+  }))
+  confirmDialogVisible.value = true
+}
+
+// 执行入库确认
+const doConfirmPurchase = async () => {
+  confirming.value = true
+  try {
+    await purchaseStore.confirmPurchase(confirmOrderId.value)
+    MessagePlugin.success('入库成功，库存已更新')
+    confirmDialogVisible.value = false
+    await fetchSupplier()
+  } catch (error) {
+    MessagePlugin.error(error.message || '入库失败')
+  } finally {
+    confirming.value = false
+  }
 }
 
 const formatAmount = (amount) => {
@@ -231,6 +390,7 @@ const goToPurchase = () => {
 }
 
 onMounted(() => {
+  productStore.initData()
   fetchSupplier()
 })
 </script>
@@ -771,6 +931,181 @@ onMounted(() => {
     .expand-leave-from {
       opacity: 1;
       max-height: 800px;
+    }
+
+    // 订单操作按钮
+    .order-actions {
+      display: flex;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px dashed $border-light;
+      margin-top: 12px;
+    }
+  }
+}
+
+// 弹窗样式
+.delete-dialog,
+.confirm-dialog {
+  :deep(.t-dialog) {
+    border-radius: $radius-lg;
+  }
+
+  :deep(.t-dialog__content) {
+    background: $bg-white;
+    border-radius: $radius-lg;
+    padding: 0 !important;
+  }
+
+  :deep(.t-dialog__header) {
+    display: none !important;
+    padding: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+  }
+
+  :deep(.t-dialog__body) {
+    padding: 0 !important;
+  }
+
+  :deep(.t-dialog__close) {
+    display: none !important;
+  }
+
+  :deep(.t-dialog__position) {
+    padding: 0 !important;
+  }
+}
+
+// 删除确认弹窗
+.delete-dialog-content {
+  text-align: center;
+  padding: $spacing-xl;
+
+  .delete-icon-wrapper {
+    margin-bottom: $spacing-md;
+
+    .delete-icon {
+      font-size: 48px;
+      color: $error-color;
+    }
+  }
+
+  .delete-title {
+    font-size: $font-md;
+    color: $text-primary;
+    font-weight: 600;
+    margin-bottom: $spacing-sm;
+  }
+
+  .delete-hint {
+    font-size: $font-sm;
+    color: $text-secondary;
+    margin-bottom: $spacing-lg;
+  }
+
+  .delete-actions {
+    display: flex;
+    gap: $spacing-md;
+
+    .t-button {
+      flex: 1;
+    }
+  }
+}
+
+// 入库确认弹窗
+.confirm-dialog-content {
+  text-align: center;
+  padding: $spacing-md $spacing-lg $spacing-lg;
+
+  .confirm-icon-wrapper {
+    margin-bottom: $spacing-xs;
+
+    .confirm-icon {
+      font-size: 40px;
+      color: $success-color;
+    }
+  }
+
+  .confirm-title {
+    font-size: $font-md;
+    color: $text-primary;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .confirm-hint {
+    font-size: $font-sm;
+    color: $text-secondary;
+    margin-bottom: $spacing-sm;
+  }
+
+  .confirm-preview {
+    background: #fafafa;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    margin-bottom: $spacing-lg;
+    text-align: left;
+
+    .preview-header {
+      font-size: $font-xs;
+      color: $text-secondary;
+      margin-bottom: $spacing-sm;
+      padding-bottom: $spacing-xs;
+      border-bottom: 1px solid $border-lighter;
+    }
+
+    .preview-items {
+      max-height: 150px;
+      overflow-y: auto;
+
+      .preview-item {
+        display: flex;
+        align-items: center;
+        padding: $spacing-xs 0;
+        font-size: $font-sm;
+
+        .preview-name {
+          flex: 1;
+          color: $text-primary;
+        }
+
+        .preview-spec {
+          color: $text-secondary;
+          margin-right: $spacing-sm;
+        }
+
+        .preview-qty {
+          color: $success-color;
+          font-weight: 600;
+        }
+      }
+    }
+
+    .preview-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: $spacing-sm;
+      margin-top: $spacing-sm;
+      border-top: 1px solid $border-lighter;
+      font-size: $font-sm;
+
+      .preview-amount {
+        font-size: $font-lg;
+        color: $success-color;
+        font-weight: 700;
+      }
+    }
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: $spacing-md;
+
+    .t-button {
+      flex: 1;
     }
   }
 }

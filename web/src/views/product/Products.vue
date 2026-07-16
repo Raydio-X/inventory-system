@@ -63,20 +63,21 @@
     <!-- 删除确认对话框 -->
     <t-dialog
       v-model:visible="showDelete"
-      header="确认删除"
+      :header="null"
       :footer="false"
       :closeBtn="false"
       placement="center"
       :attach="false"
-      width="60%"
+      width="320px"
       class="product-dialog delete-dialog"
     >
       <div class="popup-container">
         <div class="popup-body">
           <div class="delete-message">
             <t-icon name="error-circle" class="delete-icon" />
-            <p>确定要删除商品 "{{ deleteProductInfo.name }}" 吗？</p>
-            <p class="delete-warning">删除后无法恢复</p>
+            <div class="delete-title">确定要删除该商品吗？</div>
+            <div class="delete-name">"{{ deleteProductInfo.name }}"</div>
+            <div class="delete-warning">删除后无法恢复</div>
           </div>
         </div>
         <div class="popup-footer">
@@ -335,26 +336,100 @@ onMounted(() => {
     }
   }
 
+  // 删除弹窗样式
   .delete-dialog {
+    :deep(.t-dialog) {
+      border-radius: $radius-lg;
+    }
+
+    :deep(.t-dialog__content) {
+      background: $bg-white;
+      border-radius: $radius-lg;
+      padding: 0 !important;
+    }
+
+    :deep(.t-dialog__header) {
+      display: none !important;
+      padding: 0 !important;
+      height: 0 !important;
+      min-height: 0 !important;
+    }
+
+    :deep(.t-dialog__body) {
+      padding: 0 !important;
+    }
+
+    :deep(.t-dialog__close) {
+      display: none !important;
+    }
+
+    :deep(.t-dialog__position) {
+      padding: 0 !important;
+    }
+
+    .popup-container {
+      background: $bg-white;
+      border-radius: $radius-lg;
+      overflow: hidden;
+    }
+
     .delete-message {
       text-align: center;
-      padding: $spacing-lg;
+      padding: $spacing-md $spacing-lg;
 
       .delete-icon {
-        font-size: 48px;
+        font-size: 40px;
         color: $error-color;
-        margin-bottom: $spacing-md;
+        margin-bottom: $spacing-xs;
       }
 
-      p {
+      .delete-title {
         font-size: $font-md;
         color: $text-primary;
-        margin-bottom: $spacing-sm;
+        font-weight: 600;
+        margin-bottom: 2px;
+        white-space: nowrap;
+      }
+
+      .delete-name {
+        font-size: $font-sm;
+        color: $text-primary;
+        margin-bottom: $spacing-xs;
+        word-break: break-all;
       }
 
       .delete-warning {
-        font-size: $font-sm;
+        font-size: $font-xs;
         color: $text-secondary;
+      }
+    }
+
+    .popup-footer {
+      display: flex;
+      gap: $spacing-sm;
+      padding: 0 $spacing-lg $spacing-md;
+
+      :deep(.t-button) {
+        flex: 1;
+        background: transparent;
+
+        &.t-button--theme-default {
+          background: transparent;
+          border-color: $border-color;
+
+          &:hover {
+            background: rgba(0, 0, 0, 0.04);
+          }
+        }
+
+        &.t-button--theme-danger {
+          background: $error-color;
+          border-color: $error-color;
+
+          &:hover {
+            background: darken($error-color, 8%);
+          }
+        }
       }
     }
   }

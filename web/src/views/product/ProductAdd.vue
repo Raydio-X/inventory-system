@@ -64,7 +64,7 @@
               v-model.number="product.costPrice"
               type="number"
               class="cost-field"
-              placeholder="0.00"
+              placeholder="请输入成本价"
             />
           </div>
         </div>
@@ -160,7 +160,7 @@
                   v-model.number="sku.stock"
                   type="number"
                   class="sku-input"
-                  placeholder="0"
+                  placeholder="请输入库存"
                 />
               </div>
 
@@ -172,7 +172,7 @@
                     v-model.number="sku.price"
                     type="number"
                     class="sku-input"
-                    placeholder="0.00"
+                    placeholder="请输入价格"
                   />
                 </div>
               </div>
@@ -290,7 +290,7 @@ const uploading = ref(false)
 const loading = ref(false)
 const product = ref({
   name: '',
-  costPrice: 0,
+  costPrice: null,
   categoryId: null,
   supplierId: null,
   skus: []
@@ -381,8 +381,8 @@ const addSku = () => {
   product.value.skus.push({
     color: '',
     size: '',
-    stock: 0,
-    price: 0
+    stock: null,
+    price: null
   })
 }
 

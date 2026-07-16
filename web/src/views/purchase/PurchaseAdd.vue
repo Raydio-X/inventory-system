@@ -1,7 +1,7 @@
 <template>
   <div class="page purchase-add-page">
     <!-- 顶部导航栏 -->
-    <navbar title="新增采购" />
+    <navbar :title="isEditMode ? '修改采购订单' : '新增采购'" />
 
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-wrapper">
@@ -22,7 +22,7 @@
             <t-select
               v-model="order.supplierId"
               :options="supplierOptions"
-              placeholder="请选择供应商（可选）"
+              placeholder="请选择供应商"
               clearable
               class="category-select"
             />
@@ -87,7 +87,7 @@
                   v-model.number="item.quantity"
                   type="number"
                   class="item-input"
-                  placeholder="0"
+                  placeholder="请输入数量"
                   min="1"
                 />
               </div>
@@ -99,7 +99,7 @@
                     v-model.number="item.costPrice"
                     type="number"
                     class="item-input price-input"
-                    placeholder="0.00"
+                    placeholder="请输入单价"
                     min="0"
                   />
                 </div>
@@ -213,7 +213,7 @@
         @click="submitOrder"
       >
         <t-icon name="check" />
-        <span>创建采购单</span>
+        <span>{{ isEditMode ? '保存修改' : '创建采购单' }}</span>
       </t-button>
     </div>
   </div>
@@ -236,6 +236,10 @@ const purchaseStore = usePurchaseStore()
 const loading = ref(false)
 const showProductPicker = ref(false)
 const productSearchKeyword = ref('')
+
+// 编辑模式
+const editOrderId = ref(null)
+const isEditMode = computed(() => !!editOrderId.value)
 
 // 供应商列表
 const suppliers = ref([])
@@ -261,6 +265,7 @@ const totalAmount = computed(() =>
 
 // 是否可保存
 const canSave = computed(() =>
+  order.value.supplierId &&
   order.value.items.length > 0 &&
   order.value.items.every(item => item.quantity > 0 && item.costPrice > 0)
 )
@@ -295,8 +300,8 @@ const addSkuToItems = (product, sku) => {
       color: sku.color,
       size: sku.size,
       currentStock: sku.stock,
-      quantity: 1,
-      costPrice: product.costPrice || 0
+      quantity: null,
+      costPrice: null
     })
   }
 }
@@ -314,6 +319,12 @@ const formatAmount = (amount) => {
 
 // 提交采购订单
 const submitOrder = async () => {
+  // 校验供应商
+  if (!order.value.supplierId) {
+    MessagePlugin.warning('请选择供应商')
+    return
+  }
+
   if (order.value.items.length === 0) {
     MessagePlugin.warning('请添加采购商品')
     return
@@ -346,11 +357,18 @@ const submitOrder = async () => {
       }))
     }
 
-    await purchaseStore.createPurchaseOrder(orderData)
-    MessagePlugin.success('采购订单创建成功')
+    if (isEditMode.value) {
+      // 编辑模式：调用更新接口
+      await purchaseStore.updatePurchaseOrder(editOrderId.value, orderData)
+      MessagePlugin.success('采购订单修改成功')
+    } else {
+      // 创建模式：调用创建接口
+      await purchaseStore.createPurchaseOrder(orderData)
+      MessagePlugin.success('采购订单创建成功')
+    }
     router.back()
   } catch (error) {
-    MessagePlugin.error(error.message || '创建采购订单失败')
+    MessagePlugin.error(error.message || (isEditMode.value ? '修改采购订单失败' : '创建采购订单失败'))
   }
 }
 
@@ -370,14 +388,42 @@ const fetchSuppliers = async () => {
   }
 }
 
+// 加载现有订单数据（编辑模式）
+const loadOrderData = async (orderId) => {
+  try {
+    const res = await purchaseStore.fetchPurchaseOrder(orderId)
+    if (res) {
+      order.value.supplierId = res.supplierId || null
+      order.value.remark = res.remark || ''
+      order.value.items = (res.items || []).map(item => ({
+        productId: item.productId,
+        skuId: item.skuId,
+        productName: item.productName,
+        color: item.color,
+        size: item.size,
+        currentStock: item.currentStock || 0,
+        quantity: item.quantity,
+        costPrice: item.costPrice
+      }))
+    }
+  } catch (e) {
+    MessagePlugin.error('加载订单数据失败')
+  }
+}
+
 onMounted(async () => {
   loading.value = true
   try {
     await productStore.initData()
     await fetchSuppliers()
 
-    // 如果路由带有预填充参数（从添加商品页面跳转）
-    if (route.query.productId) {
+    // 检查是否为编辑模式
+    if (route.query.orderId) {
+      editOrderId.value = route.query.orderId
+      // 加载现有订单数据
+      await loadOrderData(editOrderId.value)
+    } else if (route.query.productId) {
+      // 如果路由带有预填充参数（从添加商品页面跳转）
       const productId = route.query.productId
       const product = productStore.products.find(p => p.id === productId)
       if (product && product.skus) {
@@ -405,8 +451,8 @@ onMounted(async () => {
                 color: sku.color,
                 size: sku.size,
                 currentStock: sku.stock,
-                quantity: stock > 0 ? stock : 1,
-                costPrice: product.costPrice || 0
+                quantity: stock > 0 ? stock : null,
+                costPrice: product.costPrice || null
               })
             }
           }

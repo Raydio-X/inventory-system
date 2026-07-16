@@ -43,6 +43,19 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   }
 
+  // 更新采购订单
+  const updatePurchaseOrder = async (id, orderData) => {
+    try {
+      const res = await api.put(`/purchases/${id}`, orderData)
+      if (res.success) {
+        await fetchPurchaseOrders()
+      }
+      return res
+    } catch (error) {
+      throw error
+    }
+  }
+
   // 确认采购入库
   const confirmPurchase = async (id) => {
     try {
@@ -83,6 +96,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     fetchPurchaseOrders,
     fetchPurchaseOrder,
     createPurchaseOrder,
+    updatePurchaseOrder,
     confirmPurchase,
     deletePurchaseOrder,
     initData
