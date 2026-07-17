@@ -241,6 +241,9 @@ const productSearchKeyword = ref('')
 const editOrderId = ref(null)
 const isEditMode = computed(() => !!editOrderId.value)
 
+// 新商品入库标识（用于自动设置已入库状态）
+const isNewProduct = ref(false)
+
 // 供应商列表
 const suppliers = ref([])
 
@@ -346,6 +349,7 @@ const submitOrder = async () => {
     const orderData = {
       supplierId: order.value.supplierId || null,
       remark: order.value.remark || '',
+      isNewProduct: isNewProduct.value, // 传递新商品标识
       items: order.value.items.map(item => ({
         productId: item.productId,
         skuId: item.skuId,
@@ -416,6 +420,11 @@ onMounted(async () => {
   try {
     await productStore.initData()
     await fetchSuppliers()
+
+    // 接收新商品入库标识
+    if (route.query.isNewProduct === 'true') {
+      isNewProduct.value = true
+    }
 
     // 检查是否为编辑模式
     if (route.query.orderId) {

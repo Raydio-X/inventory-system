@@ -146,10 +146,11 @@ const getPurchaseOrderById = async (req, res, next) => {
 /**
  * 创建采购订单
  * 所有明细必须关联已有的商品和SKU
+ * 如果 isNewProduct 为 true，自动设置为已入库状态并执行入库操作
  */
 const createPurchaseOrder = async (req, res, next) => {
   try {
-    const { supplierId, supplier, items, remark } = req.body;
+    const { supplierId, supplier, items, remark, isNewProduct } = req.body;
 
     // 数据验证
     if (!items || items.length === 0) {
@@ -192,7 +193,12 @@ const createPurchaseOrder = async (req, res, next) => {
     // 计算总金额
     const totalAmount = items.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 0), 0);
 
+    // 新商品入库时状态为 'completed'，否则为 'pending'
+    const orderStatus = isNewProduct ? 'completed' : 'pending';
+
     const orderId = generatePurchaseOrderId();
+    let orderNo = '';
+
     await db.transaction(async (connection) => {
       // 生成订单号
       const date = new Date();
@@ -201,12 +207,12 @@ const createPurchaseOrder = async (req, res, next) => {
         `SELECT COUNT(*) as count FROM purchase_orders WHERE DATE(created_at) = CURDATE()`
       );
       const count = (countResult?.[0]?.count || 0) + 1;
-      const orderNo = `CG${dateStr}${String(count).padStart(4, '0')}`;
+      orderNo = `CG${dateStr}${String(count).padStart(4, '0')}`;
 
       await connection.query(
         `INSERT INTO purchase_orders (id, order_no, supplier, supplier_id, total_amount, status, remark)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
-        [orderId, orderNo, supplierName, supplierId || null, totalAmount, remark || '']
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, orderNo, supplierName, supplierId || null, totalAmount, orderStatus, remark || '']
       );
 
       for (const item of items) {
@@ -217,6 +223,61 @@ const createPurchaseOrder = async (req, res, next) => {
           `INSERT INTO purchase_order_items (id, order_id, product_id, sku_id, product_name, color, size, quantity, cost_price, total_price)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [itemId, orderId, item.productId, item.skuId, item.productName || '', item.color || '', item.size || '', quantity, costPrice, costPrice * quantity]
+        );
+      }
+
+      // 如果是新商品入库，执行入库操作
+      if (isNewProduct) {
+        for (const item of items) {
+          if (!item.skuId) continue;
+
+          // 获取当前SKU信息
+          const [skuRows] = await connection.execute(
+            'SELECT stock, price FROM skus WHERE id = ?',
+            [item.skuId]
+          );
+          const currentSku = skuRows[0];
+
+          if (!currentSku) continue;
+
+          // 更新SKU库存
+          await connection.execute(
+            'UPDATE skus SET stock = stock + ? WHERE id = ?',
+            [item.quantity, item.skuId]
+          );
+
+          // 移动加权平均法计算商品成本价
+          if (item.costPrice > 0) {
+            const oldStock = currentSku.stock;
+            const oldPrice = Number(currentSku.price);
+            const newStock = oldStock + item.quantity;
+            const newCostPrice = Number(item.costPrice);
+            const avgPrice = newStock > 0
+              ? (oldStock * oldPrice + item.quantity * newCostPrice) / newStock
+              : newCostPrice;
+
+            // 更新商品成本价
+            await connection.execute(
+              'UPDATE products SET cost_price = ? WHERE id = ?',
+              [Math.round(avgPrice * 100) / 100, item.productId]
+            );
+          }
+
+          // 记录库存流水
+          const logId = `inv-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
+          await connection.execute(
+            `INSERT INTO inventory_logs (id, sku_id, type, quantity, order_id, order_no, remark)
+             VALUES (?, ?, 'purchase_in', ?, ?, ?, ?)`,
+            [logId, item.skuId, item.quantity, orderId, orderNo, '新商品入库']
+          );
+        }
+
+        // 记录账目
+        const accId = `acc-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
+        await connection.execute(
+          `INSERT INTO account_records (id, type, category, amount, order_id, order_no, remark)
+           VALUES (?, 'expense', 'purchase', ?, ?, ?, ?)`,
+          [accId, totalAmount, orderId, orderNo, `新商品入库 - ${supplierName || '供应商'}`]
         );
       }
     });
@@ -233,7 +294,7 @@ const createPurchaseOrder = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data,
-      message: '采购订单创建成功'
+      message: isNewProduct ? '新商品入库成功' : '采购订单创建成功'
     });
   } catch (error) {
     next(error);
@@ -434,7 +495,8 @@ const updatePurchaseOrder = async (req, res, next) => {
 };
 
 /**
- * 删除采购订单（仅允许删除待入库状态的订单）
+ * 删除采购订单
+ * 注意：删除已入库的订单不会影响实际库存数量，仅删除记录
  */
 const deletePurchaseOrder = async (req, res, next) => {
   try {
@@ -445,13 +507,12 @@ const deletePurchaseOrder = async (req, res, next) => {
       throw new NotFoundError('采购订单不存在');
     }
 
-    if (existing.status === 'completed') {
-      throw new ValidationError('已入库的采购订单不能删除');
-    }
-
     await db.transaction(async (connection) => {
+      // 删除采购订单明细
       await connection.execute('DELETE FROM purchase_order_items WHERE order_id = ?', [id]);
+      // 删除采购订单
       await connection.execute('DELETE FROM purchase_orders WHERE id = ?', [id]);
+      // 注意：不回退库存，仅删除记录
     });
 
     res.json({

@@ -160,19 +160,12 @@
 
     <!-- 底部操作栏 -->
     <div v-if="product" class="action-bar">
-      <div class="action-left">
-        <t-button theme="default" size="large" @click="goToEdit">
-          编辑
-        </t-button>
-        <t-button theme="warning" variant="outline" size="large" @click="goToPurchase">
-          采购
-        </t-button>
-      </div>
-      <div class="action-right">
-        <t-button theme="primary" size="large" @click="addToCart">
-          开单销售
-        </t-button>
-      </div>
+      <t-button theme="default" size="large" class="action-btn" @click="goToEdit">
+        编辑
+      </t-button>
+      <t-button theme="warning" variant="outline" size="large" class="action-btn" @click="goToPurchase">
+        采购
+      </t-button>
     </div>
   </div>
 </template>
@@ -183,13 +176,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { Button, Icon, MessagePlugin } from 'tdesign-vue-next'
 import Navbar from '@/components/Navbar.vue'
 import { useProductStore } from '@/store/product'
-import { useBillingStore } from '@/store/billing'
 import api from '@/utils/api'
 
 const router = useRouter()
 const route = useRoute()
 const productStore = useProductStore()
-const billingStore = useBillingStore()
 
 const loading = ref(false)
 const product = ref(null)
@@ -269,13 +260,6 @@ const goToPurchase = () => {
     query.supplierId = product.value.supplierId
   }
   router.push({ path: '/purchases/add', query })
-}
-
-const addToCart = () => {
-  if (!product.value) return
-  billingStore.setCurrentProduct(product.value)
-  router.push('/billing')
-  MessagePlugin.info('请选择SKU规格')
 }
 
 const goBack = () => {
@@ -714,7 +698,6 @@ onMounted(() => {
     left: 0;
     right: 0;
     display: flex;
-    justify-content: space-between;
     gap: $spacing-md;
     padding: $spacing-md $spacing-lg;
     padding-bottom: calc($spacing-md + $safe-area-bottom);
@@ -722,23 +705,9 @@ onMounted(() => {
     border-top: 1px solid $border-light;
     z-index: 100;
 
-    .action-left,
-    .action-right {
-      display: flex;
-      gap: $spacing-sm;
-
-      .t-button {
-        flex: 1;
-        border-radius: $radius-md;
-      }
-    }
-
-    .action-left {
-      flex: 1.2;
-    }
-
-    .action-right {
+    .action-btn {
       flex: 1;
+      border-radius: $radius-md;
     }
   }
 }

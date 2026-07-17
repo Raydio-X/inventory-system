@@ -103,16 +103,28 @@
       <div v-if="product.skus.length === 0" class="sku-empty">
         <t-icon name="inbox" class="empty-icon" />
         <span class="empty-text">暂无规格</span>
-        <t-button
-          theme="primary"
-          size="small"
-          variant="outline"
-          class="sku-add-btn"
-          @click="addSku"
-        >
-          <template #icon><t-icon name="add" /></template>
-          添加规格
-        </t-button>
+        <div class="sku-empty-actions">
+          <t-button
+            theme="primary"
+            size="small"
+            variant="outline"
+            class="sku-add-btn"
+            @click="addSku"
+          >
+            <template #icon><t-icon name="add" /></template>
+            添加规格
+          </t-button>
+          <t-button
+            theme="warning"
+            size="small"
+            variant="outline"
+            class="sku-add-btn"
+            @click="openBatchAddDialog"
+          >
+            <template #icon><t-icon name="add-circle" /></template>
+            批量添加
+          </t-button>
+        </div>
       </div>
 
       <div v-else class="sku-grid">
@@ -192,9 +204,95 @@
             <template #icon><t-icon name="add" /></template>
             添加规格
           </t-button>
+          <t-button
+            theme="warning"
+            size="small"
+            variant="outline"
+            class="sku-add-btn"
+            @click="openBatchAddDialog"
+          >
+            <template #icon><t-icon name="add-circle" /></template>
+            批量添加
+          </t-button>
         </div>
       </div>
     </div>
+
+    <!-- 批量添加规格弹窗 -->
+    <t-dialog
+      v-model:visible="showBatchAddDialog"
+      header="批量添加规格"
+      :footer="false"
+      :closeBtn="false"
+      placement="center"
+      :attach="false"
+      width="420px"
+      class="batch-add-dialog"
+    >
+      <div class="batch-add-content">
+        <div class="batch-field">
+          <label class="batch-label">颜色</label>
+          <input
+            v-model="batchData.color"
+            type="text"
+            class="batch-input"
+            placeholder="如：白色"
+          />
+        </div>
+
+        <div class="batch-field">
+          <label class="batch-label">尺码（多个用逗号分隔）</label>
+          <input
+            v-model="batchData.sizes"
+            type="text"
+            class="batch-input"
+            placeholder="如：S, M, L, XL"
+          />
+          <span class="batch-hint">例如输入 S, M, L, XL 将生成4条规格</span>
+        </div>
+
+        <div class="batch-row">
+          <div class="batch-field batch-field-half">
+            <label class="batch-label">库存</label>
+            <input
+              v-model.number="batchData.stock"
+              type="number"
+              class="batch-input"
+              placeholder="请输入库存"
+            />
+          </div>
+
+          <div class="batch-field batch-field-half">
+            <label class="batch-label">价格</label>
+            <div class="batch-price-wrapper">
+              <span class="batch-price-prefix">¥</span>
+              <input
+                v-model.number="batchData.price"
+                type="number"
+                class="batch-input"
+                placeholder="请输入价格"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="batch-preview" v-if="batchPreview.length > 0">
+          <div class="batch-preview-title">将添加以下规格：</div>
+          <div class="batch-preview-list">
+            <span v-for="(item, index) in batchPreview" :key="index" class="batch-preview-item">
+              {{ item.color }}/{{ item.size }}
+            </span>
+          </div>
+        </div>
+
+        <div class="batch-actions">
+          <t-button theme="default" size="large" @click="showBatchAddDialog = false">取消</t-button>
+          <t-button theme="primary" size="large" :disabled="batchPreview.length === 0" @click="confirmBatchAdd">
+            确认添加
+          </t-button>
+        </div>
+      </div>
+    </t-dialog>
 
     <!-- 删除规格确认弹窗 -->
     <t-dialog
@@ -403,6 +501,62 @@ const removeSku = () => {
   }
 }
 
+// 批量添加规格
+const showBatchAddDialog = ref(false)
+const batchData = ref({
+  color: '',
+  sizes: '',
+  stock: null,
+  price: null
+})
+
+// 批量添加预览（计算属性）
+const batchPreview = computed(() => {
+  const color = batchData.value.color?.trim()
+  const sizesStr = batchData.value.sizes?.trim()
+
+  if (!color || !sizesStr) return []
+
+  // 解析尺码（支持逗号、空格分隔）
+  const sizes = sizesStr.split(/[,，\s]+/).map(s => s.trim()).filter(s => s)
+
+  return sizes.map(size => ({
+    color,
+    size,
+    stock: batchData.value.stock || null,
+    price: batchData.value.price || null
+  }))
+})
+
+// 打开批量添加弹窗
+const openBatchAddDialog = () => {
+  batchData.value = {
+    color: '',
+    sizes: '',
+    stock: null,
+    price: null
+  }
+  showBatchAddDialog.value = true
+}
+
+// 确认批量添加
+const confirmBatchAdd = () => {
+  if (batchPreview.value.length === 0) return
+
+  // 批量添加到 SKU 列表
+  batchPreview.value.forEach(sku => {
+    product.value.skus.push({
+      color: sku.color,
+      size: sku.size,
+      stock: sku.stock,
+      price: sku.price
+    })
+  })
+
+  MessagePlugin.success(`已添加 ${batchPreview.value.length} 条规格`)
+  showBatchAddDialog.value = false
+}
+
 // 加载商品数据（编辑模式）
 const loadProductData = async () => {
   if (!isEditMode.value || !productId.value) return
@@ -537,7 +691,8 @@ const goToPurchase = () => {
   const query = {
     productId: savedProductId.value,
     skuIds: skuIds.join(','),
-    stocks: stocks.join(',')
+    stocks: stocks.join(','),
+    isNewProduct: 'true' // 标识为新商品入库
   }
   if (product.value.supplierId) {
     query.supplierId = product.value.supplierId
@@ -923,8 +1078,13 @@ onMounted(() => {
         margin-bottom: $spacing-md;
       }
 
-      .sku-add-btn {
-        margin-top: $spacing-sm;
+      .sku-empty-actions {
+        display: flex;
+        gap: $spacing-lg;
+
+        .sku-add-btn {
+          border-radius: $radius-md;
+        }
       }
     }
 
@@ -1038,6 +1198,7 @@ onMounted(() => {
       .sku-add-row {
         display: flex;
         justify-content: center;
+        gap: $spacing-lg;
         padding: $spacing-md 0;
 
         .sku-add-btn {
@@ -1097,6 +1258,141 @@ onMounted(() => {
       &:disabled {
         opacity: 0.5;
         box-shadow: none;
+      }
+    }
+  }
+
+  // 批量添加规格弹窗
+  .batch-add-dialog {
+    :deep(.t-dialog__content) {
+      background: $bg-white;
+      border-radius: $radius-lg;
+      padding: 0;
+    }
+
+    :deep(.t-dialog__header) {
+      padding: $spacing-md $spacing-lg;
+      font-size: $font-md;
+      font-weight: 600;
+      color: $text-primary;
+      border-bottom: 1px solid $border-light;
+    }
+
+    :deep(.t-dialog__body) {
+      padding: 0;
+    }
+
+    :deep(.t-dialog__close) {
+      display: none;
+    }
+  }
+
+  .batch-add-content {
+    padding: $spacing-lg;
+
+    .batch-field {
+      margin-bottom: $spacing-md;
+
+      .batch-label {
+        display: block;
+        font-size: $font-sm;
+        color: $text-secondary;
+        margin-bottom: $spacing-xs;
+      }
+
+      .batch-input {
+        width: 100%;
+        height: 40px;
+        padding: 0 $spacing-sm;
+        border: 1px solid $border-color;
+        border-radius: $radius-sm;
+        font-size: $font-md;
+        color: $text-primary;
+        background: $bg-white;
+        outline: none;
+        transition: border-color 0.2s;
+
+        &:focus {
+          border-color: $primary-color;
+        }
+
+        &::placeholder {
+          color: $text-placeholder;
+        }
+      }
+
+      .batch-hint {
+        display: block;
+        font-size: $font-xs;
+        color: $text-placeholder;
+        margin-top: 4px;
+      }
+    }
+
+    .batch-row {
+      display: flex;
+      gap: $spacing-md;
+
+      .batch-field-half {
+        flex: 1;
+      }
+    }
+
+    .batch-price-wrapper {
+      display: flex;
+      align-items: center;
+      border: 1px solid $border-color;
+      border-radius: $radius-sm;
+      background: $bg-white;
+      overflow: hidden;
+
+      .batch-price-prefix {
+        padding: 0 $spacing-sm;
+        color: $text-secondary;
+        font-size: $font-md;
+      }
+
+      .batch-input {
+        border: none;
+        border-radius: 0;
+      }
+    }
+
+    .batch-preview {
+      margin-top: $spacing-md;
+      padding: $spacing-sm $spacing-md;
+      background: rgba($primary-color, 0.05);
+      border-radius: $radius-sm;
+
+      .batch-preview-title {
+        font-size: $font-xs;
+        color: $text-secondary;
+        margin-bottom: $spacing-xs;
+      }
+
+      .batch-preview-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .batch-preview-item {
+        display: inline-block;
+        padding: 4px 8px;
+        background: $bg-white;
+        border-radius: $radius-sm;
+        font-size: $font-xs;
+        color: $primary-color;
+      }
+    }
+
+    .batch-actions {
+      display: flex;
+      gap: $spacing-sm;
+      margin-top: $spacing-lg;
+
+      .t-button {
+        flex: 1;
       }
     }
   }

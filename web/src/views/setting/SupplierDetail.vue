@@ -150,16 +150,20 @@
                   <span>{{ order.remark }}</span>
                 </div>
 
-                <!-- 操作按钮（仅待入库状态显示） -->
-                <div v-if="order.status === 'pending'" class="order-actions">
-                  <t-button theme="success" size="small" @click="openConfirmDialog(order)">
-                    <template #icon><t-icon name="check" /></template>
-                    确认入库
-                  </t-button>
-                  <t-button theme="warning" size="small" variant="outline" @click="editPurchaseOrder(order)">
-                    <template #icon><t-icon name="edit" /></template>
-                    修改
-                  </t-button>
+                <!-- 操作按钮 -->
+                <div class="order-actions">
+                  <!-- 待入库状态：显示确认入库、修改、删除 -->
+                  <template v-if="order.status === 'pending'">
+                    <t-button theme="success" size="small" @click="openConfirmDialog(order)">
+                      <template #icon><t-icon name="check" /></template>
+                      确认入库
+                    </t-button>
+                    <t-button theme="warning" size="small" variant="outline" @click="editPurchaseOrder(order)">
+                      <template #icon><t-icon name="edit" /></template>
+                      修改
+                    </t-button>
+                  </template>
+                  <!-- 所有状态都可以删除 -->
                   <t-button theme="danger" size="small" variant="outline" @click="openDeleteDialog(order)">
                     <template #icon><t-icon name="delete" /></template>
                     删除
