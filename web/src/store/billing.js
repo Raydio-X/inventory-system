@@ -1,32 +1,85 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import api from '@/utils/api'
+
+// localStorage 持久化相关
+const CART_STORAGE_KEY = 'inventory_cart_data'
+
+// 从 localStorage 读取购物车数据
+const loadCartFromStorage = () => {
+  try {
+    const data = localStorage.getItem(CART_STORAGE_KEY)
+    if (data) {
+      return JSON.parse(data)
+    }
+  } catch (e) {
+    console.error('[购物车] 读取本地数据失败:', e)
+  }
+  return null
+}
+
+// 保存购物车数据到 localStorage
+const saveCartToStorage = (data) => {
+  try {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(data))
+  } catch (e) {
+    console.error('[购物车] 保存本地数据失败:', e)
+  }
+}
+
+// 清除 localStorage 中的购物车数据
+const clearCartStorage = () => {
+  try {
+    localStorage.removeItem(CART_STORAGE_KEY)
+  } catch (e) {
+    console.error('[购物车] 清除本地数据失败:', e)
+  }
+}
 
 // 开单管理 Store
 export const useBillingStore = defineStore('billing', () => {
+  // 从 localStorage 读取初始数据
+  const savedData = loadCartFromStorage()
+
   // 购物车商品列表
-  const cartItems = ref([])
+  const cartItems = ref(savedData?.cartItems || [])
 
   // 当前关联的客户
-  const currentCustomer = ref(null)
+  const currentCustomer = ref(savedData?.currentCustomer || null)
 
   // 整单折扣
-  const orderDiscount = ref(1)
+  const orderDiscount = ref(savedData?.orderDiscount || 1)
 
   // 抹零金额
-  const roundOffAmount = ref(0)
+  const roundOffAmount = ref(savedData?.roundOffAmount || 0)
 
   // 支付状态: unpaid | partial | paid
-  const paymentStatus = ref('unpaid')
+  const paymentStatus = ref(savedData?.paymentStatus || 'unpaid')
 
   // 部分付款金额
-  const partialPaidAmount = ref(0)
+  const partialPaidAmount = ref(savedData?.partialPaidAmount || 0)
 
   // 销售单列表
   const salesOrders = ref([])
 
   // 退货单列表
   const returnOrders = ref([])
+
+  // 监听购物车状态变化，自动保存到 localStorage
+  watch(
+    [cartItems, currentCustomer, orderDiscount, roundOffAmount, paymentStatus, partialPaidAmount],
+    () => {
+      saveCartToStorage({
+        cartItems: cartItems.value,
+        currentCustomer: currentCustomer.value,
+        orderDiscount: orderDiscount.value,
+        roundOffAmount: roundOffAmount.value,
+        paymentStatus: paymentStatus.value,
+        partialPaidAmount: partialPaidAmount.value
+      })
+    },
+    { deep: true }
+  )
 
   // 购物车商品数量
   const cartItemCount = computed(() => {
@@ -121,6 +174,8 @@ export const useBillingStore = defineStore('billing', () => {
     roundOffAmount.value = 0
     paymentStatus.value = 'unpaid'
     partialPaidAmount.value = 0
+    // 清除本地存储
+    clearCartStorage()
   }
 
   // 设置当前客户

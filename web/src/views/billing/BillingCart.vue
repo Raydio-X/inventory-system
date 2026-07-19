@@ -14,7 +14,7 @@
     </div>
 
     <!-- 客户选择卡片 -->
-    <div class="customer-card" @click="showCustomer = true">
+    <div class="customer-card" @click="openCustomerDialog">
       <div class="customer-left">
         <t-icon name="user" class="customer-icon" />
         <div class="customer-info">
@@ -228,7 +228,10 @@
               <span class="popup-customer-name">散客</span>
               <span class="popup-customer-phone">无需选择客户</span>
             </div>
-            <t-icon v-if="!currentCustomer" name="check-circle" class="check-icon" />
+            <div v-if="!currentCustomer" class="check-icon">
+              <t-icon name="check-circle" />
+            </div>
+            <div v-else class="check-placeholder"></div>
           </div>
           <!-- 客户列表 -->
           <div v-for="customer in filteredCustomers" :key="customer.id"
@@ -242,7 +245,10 @@
               <span class="popup-customer-name">{{ customer.name }}</span>
               <span class="popup-customer-phone">{{ customer.phone }}</span>
             </div>
-            <t-icon v-if="currentCustomer?.id === customer.id" name="check-circle" class="check-icon" />
+            <div v-if="currentCustomer?.id === customer.id" class="check-icon">
+              <t-icon name="check-circle" />
+            </div>
+            <div v-else class="check-placeholder"></div>
           </div>
         </div>
       </div>
@@ -331,7 +337,7 @@
           </div>
           <div class="checkout-row">
             <span class="checkout-label">订单金额</span>
-            <span class="checkout-value amount">¥{{ formatAmount(cartTotal) }}</span>
+            <span class="checkout-value amount">{{ formatAmount(cartTotal) }}</span>
           </div>
           <div class="checkout-row">
             <span class="checkout-label">客户</span>
@@ -362,7 +368,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useBillingStore } from '@/store/billing'
@@ -373,6 +379,11 @@ const router = useRouter()
 const billingStore = useBillingStore()
 const customerStore = useCustomerStore()
 const debtStore = useDebtStore()
+
+// 初始化客户数据
+onMounted(() => {
+  customerStore.initData()
+})
 
 const cartItems = computed(() => billingStore.cartItems)
 const cartItemCount = computed(() => billingStore.cartItemCount)
@@ -409,6 +420,12 @@ const remainDebt = computed(() => {
 const showCustomer = ref(false)
 const customerKeyword = ref('')
 const customers = computed(() => customerStore.customers)
+
+// 打开客户选择弹窗（刷新客户列表）
+const openCustomerDialog = async () => {
+  await customerStore.fetchCustomers()
+  showCustomer.value = true
+}
 
 const filteredCustomers = computed(() => {
   if (!customerKeyword.value) return customers.value
@@ -1243,11 +1260,30 @@ const goBack = () => {
 
         .popup-customer-info {
           flex: 1; min-width: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
           .popup-customer-name { font-size: 14px; color: $text-primary; font-weight: 500; display: block; }
           .popup-customer-phone { font-size: 12px; color: $text-placeholder; margin-top: 2px; display: block; }
         }
 
-        .check-icon { font-size: 20px; color: $primary-color; flex-shrink: 0; }
+        .check-icon { 
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0; 
+          font-size: 20px; 
+          color: $primary-color; 
+        }
+
+        // 占位符，用于未选中时保持布局一致
+        .check-placeholder {
+          width: 24px;
+          height: 24px;
+          flex-shrink: 0;
+        }
 
         &.selected {
           .popup-customer-name { color: $primary-color; }

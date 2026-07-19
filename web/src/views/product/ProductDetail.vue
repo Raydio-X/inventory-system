@@ -76,9 +76,10 @@
               </div>
             </div>
             <div class="price-item">
-              <label class="price-label">成本价格</label>
+              <label class="price-label">平均成本</label>
               <div class="price-value">
-                <span class="price-amount secondary">¥{{ product.costPrice || 0 }}</span>
+                <span class="price-amount secondary">¥{{ product.avgCost || 0 }}</span>
+                <span class="price-hint">（基于采购订单计算）</span>
               </div>
             </div>
             <div class="price-item">
@@ -198,8 +199,10 @@ const warningStock = computed(() =>
 )
 
 const profitRate = computed(() => {
-  if (!product.value || !product.value.costPrice || product.value.costPrice === 0) return 0
-  const rate = ((product.value.price - product.value.costPrice) / product.value.costPrice * 100)
+  // 使用平均成本计算利润率
+  const avgCost = product.value?.avgCost || 0
+  if (!avgCost || avgCost === 0) return 0
+  const rate = ((product.value.price - avgCost) / avgCost * 100)
   return Math.round(rate)
 })
 
@@ -503,6 +506,12 @@ onMounted(() => {
           font-size: $font-sm;
           color: $text-placeholder;
           margin-left: 2px;
+        }
+
+        .price-hint {
+          font-size: $font-xs;
+          color: $text-placeholder;
+          margin-left: 4px;
         }
 
         .profit-rate {

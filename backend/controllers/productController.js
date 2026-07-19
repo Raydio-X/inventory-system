@@ -5,6 +5,87 @@ const db = require('../config/database');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
 
 /**
+ * 计算商品的平均成本
+ * 平均成本 = 所有采购订单总成本之和 ÷ 所有采购订单总数量之和
+ * @param {string} productId - 商品ID
+ * @returns {number} 平均成本，保留两位小数
+ */
+async function calculateAvgCost(productId) {
+  try {
+    // 从采购订单明细中获取该商品的所有采购记录
+    const result = await db.query(`
+      SELECT 
+        SUM(oi.quantity) as total_quantity,
+        SUM(oi.total_price) as total_cost
+      FROM purchase_order_items oi
+      JOIN purchase_orders o ON oi.order_id = o.id
+      WHERE oi.product_id = ? AND o.status = 'completed'
+    `, [productId]);
+
+    const totalQuantity = result[0]?.total_quantity || 0;
+    const totalCost = result[0]?.total_cost || 0;
+
+    if (totalQuantity === 0) {
+      return 0;
+    }
+
+    // 计算平均成本，保留两位小数
+    const avgCost = Math.round((totalCost / totalQuantity) * 100) / 100;
+    return avgCost;
+  } catch (error) {
+    console.error('[计算平均成本失败]', error);
+    return 0;
+  }
+}
+
+/**
+ * 批量计算多个商品的平均成本
+ * @param {string[]} productIds - 商品ID数组
+ * @returns {Object} 商品ID -> 平均成本的映射
+ */
+async function batchCalculateAvgCost(productIds) {
+  if (!productIds || productIds.length === 0) {
+    return {};
+  }
+
+  try {
+    const result = await db.query(`
+      SELECT 
+        oi.product_id,
+        SUM(oi.quantity) as total_quantity,
+        SUM(oi.total_price) as total_cost
+      FROM purchase_order_items oi
+      JOIN purchase_orders o ON oi.order_id = o.id
+      WHERE oi.product_id IN (?) AND o.status = 'completed'
+      GROUP BY oi.product_id
+    `, [productIds]);
+
+    const avgCostMap = {};
+    
+    // 初始化所有商品的平均成本为0
+    for (const id of productIds) {
+      avgCostMap[id] = 0;
+    }
+
+    // 计算每个商品的平均成本
+    for (const row of result) {
+      if (row.total_quantity > 0) {
+        avgCostMap[row.product_id] = Math.round((row.total_cost / row.total_quantity) * 100) / 100;
+      }
+    }
+
+    return avgCostMap;
+  } catch (error) {
+    console.error('[批量计算平均成本失败]', error);
+    const avgCostMap = {};
+    for (const id of productIds) {
+      avgCostMap[id] = 0;
+    }
+    return avgCostMap;
+  }
+}
+
+/**
  * 生成商品ID: prod-xxxxx
  */
 function generateProductId() {
@@ -117,6 +198,15 @@ const getProducts = async (req, res, next) => {
 
     const products = Object.values(productMap);
 
+    // 批量计算所有商品的平均成本
+    const productIds = products.map(p => p.id);
+    const avgCostMap = await batchCalculateAvgCost(productIds);
+
+    // 将平均成本添加到每个商品
+    for (const product of products) {
+      product.avgCost = avgCostMap[product.id] || 0;
+    }
+
     res.json({
       success: true,
       data: products,
@@ -142,8 +232,12 @@ const getProductById = async (req, res, next) => {
 
     const skus = await db.query('SELECT * FROM skus WHERE product_id = ?', [id]);
 
+    // 计算平均成本
+    const avgCost = await calculateAvgCost(id);
+
     const result = {
       ...mapProductRow(product),
+      avgCost, // 平均成本（从采购订单计算）
       skus: skus.map(mapSkuRow)
     };
 

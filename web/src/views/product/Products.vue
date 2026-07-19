@@ -38,7 +38,7 @@
           </div>
           <div class="product-price-row">
             <span class="product-price">¥{{ product.price }}</span>
-            <span class="product-cost">成本: ¥{{ product.costPrice }}</span>
+            <span class="product-cost">平均成本: ¥{{ product.avgCost || 0 }}</span>
           </div>
           <div class="product-stock">
             总库存: {{ getTotalStock(product) }}件

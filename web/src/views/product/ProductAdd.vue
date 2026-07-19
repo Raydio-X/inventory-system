@@ -318,10 +318,34 @@
       </div>
     </t-dialog>
 
-    <!-- 创建采购单引导弹窗 -->
+    <!-- 确认创建商品弹窗 -->
+    <t-dialog
+      v-model:visible="showConfirmDialog"
+      :header="null"
+      :footer="false"
+      :closeBtn="false"
+      placement="center"
+      :attach="false"
+      width="380px"
+      class="confirm-dialog"
+    >
+      <div class="confirm-dialog-container">
+        <div class="confirm-dialog-body">
+          <t-icon name="file-add" class="confirm-dialog-icon" />
+          <p class="confirm-dialog-title">确认创建商品？</p>
+          <p class="confirm-dialog-hint">点击确认后将保存商品信息</p>
+        </div>
+        <div class="confirm-dialog-footer">
+          <t-button theme="default" size="large" @click="showConfirmDialog = false">取消</t-button>
+          <t-button theme="primary" size="large" :loading="saving" @click="confirmSaveProduct">确认创建</t-button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <!-- 创建采购单弹窗（必填流程） -->
     <t-dialog
       v-model:visible="showPurchaseDialog"
-      header="创建采购单"
+      :header="null"
       :footer="false"
       :closeBtn="false"
       placement="center"
@@ -330,14 +354,49 @@
       class="purchase-dialog"
     >
       <div class="purchase-dialog-container">
-        <div class="purchase-dialog-body">
+        <div class="purchase-dialog-header">
           <t-icon name="cart" class="purchase-dialog-icon" />
-          <p>商品已保存成功</p>
-          <p class="purchase-dialog-hint">检测到您录入了初始库存，是否创建采购单记录本次入库？</p>
+          <span class="purchase-dialog-title">创建采购订单</span>
+        </div>
+        <div class="purchase-dialog-body">
+          <p class="purchase-dialog-tip">新商品已创建成功，请填写采购信息完成入库流程</p>
+          
+          <div class="purchase-form">
+            <div class="purchase-form-item">
+              <label class="purchase-form-label">供应商 <span class="required">*</span></label>
+              <t-select
+                v-model="purchaseForm.supplierId"
+                :options="supplierOptions"
+                placeholder="请选择供应商"
+                clearable
+                class="purchase-form-select"
+              />
+            </div>
+            
+            <div class="purchase-form-item">
+              <label class="purchase-form-label">采购明细</label>
+              <div class="purchase-detail-list">
+                <div v-for="(sku, index) in product.skus" :key="index" class="purchase-detail-item">
+                  <span class="purchase-detail-spec">{{ sku.color }} / {{ sku.size }}</span>
+                  <span class="purchase-detail-stock">库存: {{ sku.stock || 0 }}件</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="purchase-form-item">
+              <label class="purchase-form-label">备注</label>
+              <textarea
+                v-model="purchaseForm.remark"
+                class="purchase-form-remark"
+                placeholder="请输入备注信息（选填）"
+                rows="2"
+              ></textarea>
+            </div>
+          </div>
         </div>
         <div class="purchase-dialog-footer">
-          <t-button theme="default" size="large" @click="skipPurchase">暂不创建</t-button>
-          <t-button theme="primary" size="large" @click="goToPurchase">创建采购单</t-button>
+          <t-button theme="default" size="large" @click="cancelPurchase">取消</t-button>
+          <t-button theme="primary" size="large" :disabled="!purchaseForm.supplierId" :loading="submitting" @click="submitPurchase">提交</t-button>
         </div>
       </div>
     </t-dialog>
@@ -600,10 +659,25 @@ const loadProductData = async () => {
   }
 }
 
+// ========== 两步弹窗流程 ==========
+
+// 确认创建商品弹窗
+const showConfirmDialog = ref(false)
+const saving = ref(false)
+
+// 创建采购单弹窗
 const showPurchaseDialog = ref(false)
+const submitting = ref(false)
 const savedProductId = ref(null)
 
-const saveProduct = async () => {
+// 采购表单
+const purchaseForm = ref({
+  supplierId: null,
+  remark: ''
+})
+
+// 点击保存按钮 -> 显示确认弹窗
+const saveProduct = () => {
   // 前端表单验证
   if (!product.value.name || !product.value.name.trim()) {
     MessagePlugin.warning('请输入商品名称')
@@ -629,6 +703,20 @@ const saveProduct = async () => {
     }
   }
 
+  // 编辑模式直接保存
+  if (isEditMode.value) {
+    doUpdateProduct()
+    return
+  }
+
+  // 新建模式 -> 显示确认弹窗
+  showConfirmDialog.value = true
+}
+
+// 确认创建商品 -> 保存商品 -> 显示采购单弹窗
+const confirmSaveProduct = async () => {
+  saving.value = true
+
   try {
     // 构建商品数据
     const productData = {
@@ -647,63 +735,118 @@ const saveProduct = async () => {
       }))
     }
 
-    // 根据模式调用不同的API
-    if (isEditMode.value) {
-      await productStore.updateProduct(productId.value, productData)
-      MessagePlugin.success('商品更新成功')
-      router.push('/products')
+    await productStore.addProduct(productData)
+    MessagePlugin.success('商品创建成功')
+
+    // 关闭确认弹窗
+    showConfirmDialog.value = false
+    saving.value = false
+
+    // 获取新建商品的ID
+    const newProduct = productStore.products.find(p => p.name === productData.name)
+    if (newProduct) {
+      savedProductId.value = newProduct.id
+      // 预设供应商
+      purchaseForm.value.supplierId = product.value.supplierId || null
+      purchaseForm.value.remark = ''
+      // 显示采购单弹窗
+      showPurchaseDialog.value = true
     } else {
-      const result = await productStore.addProduct(productData)
-      MessagePlugin.success('商品保存成功')
-
-      // 检查是否有初始库存，如果有则提示创建采购单
-      const hasStock = productData.skus.some(sku => (sku.stock || 0) > 0)
-      if (hasStock) {
-        // 获取新建商品的ID（从最新列表中查找）
-        const newProduct = productStore.products.find(p => p.name === productData.name)
-        if (newProduct) {
-          savedProductId.value = newProduct.id
-          showPurchaseDialog.value = true
-          return // 不自动跳转，等用户选择
-        }
-      }
-
       router.push('/products')
     }
   } catch (error) {
     console.error('保存失败:', error)
-    const errorMsg = error.message || (isEditMode.value ? '商品更新失败' : '商品保存失败')
-    MessagePlugin.error(errorMsg)
+    MessagePlugin.error(error.message || '商品保存失败')
+    saving.value = false
   }
 }
 
-// 跳转到新增采购页面
-const goToPurchase = () => {
-  showPurchaseDialog.value = false
-  const skus = product.value.skus.filter(sku => (sku.stock || 0) > 0)
-  const skuIds = skus.map(sku => {
-    const newProduct = productStore.products.find(p => p.name === product.value.name.trim())
-    const newSku = newProduct?.skus?.find(s => s.color === sku.color.trim() && s.size === sku.size.trim())
-    return newSku?.id || ''
-  }).filter(id => id)
-  const stocks = skus.map(sku => sku.stock || 0)
+// 编辑模式更新商品
+const doUpdateProduct = async () => {
+  try {
+    const productData = {
+      name: product.value.name.trim(),
+      category: product.value.categoryId || null,
+      supplierId: product.value.supplierId || null,
+      image: productImage.value || '',
+      price: product.value.skus[0]?.price || 0,
+      costPrice: product.value.costPrice || 0,
+      skus: product.value.skus.map(sku => ({
+        id: sku.id || undefined,
+        color: sku.color.trim(),
+        size: sku.size.trim(),
+        stock: sku.stock || 0,
+        price: sku.price
+      }))
+    }
 
-  const query = {
-    productId: savedProductId.value,
-    skuIds: skuIds.join(','),
-    stocks: stocks.join(','),
-    isNewProduct: 'true' // 标识为新商品入库
+    await productStore.updateProduct(productId.value, productData)
+    MessagePlugin.success('商品更新成功')
+    router.push('/products')
+  } catch (error) {
+    console.error('更新失败:', error)
+    MessagePlugin.error(error.message || '商品更新失败')
   }
-  if (product.value.supplierId) {
-    query.supplierId = product.value.supplierId
-  }
-  router.push({ path: '/purchases/add', query })
 }
 
-// 不创建采购单，直接返回商品列表
-const skipPurchase = () => {
+// 取消创建采购单 -> 终止流程，返回商品列表
+const cancelPurchase = () => {
   showPurchaseDialog.value = false
+  MessagePlugin.info('已取消创建采购订单')
   router.push('/products')
+}
+
+// 提交采购订单
+const submitPurchase = async () => {
+  if (!purchaseForm.value.supplierId) {
+    MessagePlugin.warning('请选择供应商')
+    return
+  }
+
+  submitting.value = true
+
+  try {
+    // 构建采购订单数据
+    const newProduct = productStore.products.find(p => p.id === savedProductId.value)
+    if (!newProduct) {
+      throw new Error('找不到新创建的商品')
+    }
+
+    const items = product.value.skus.map(sku => {
+      const newSku = newProduct.skus?.find(s => s.color === sku.color.trim() && s.size === sku.size.trim())
+      return {
+        productId: savedProductId.value,
+        skuId: newSku?.id || null,
+        productName: product.value.name,
+        color: sku.color,
+        size: sku.size,
+        quantity: sku.stock || 0,
+        costPrice: sku.price || 0
+      }
+    }).filter(item => item.quantity > 0)
+
+    // 获取供应商名称
+    const supplier = suppliers.value.find(s => s.id === purchaseForm.value.supplierId)
+
+    const orderData = {
+      supplierId: purchaseForm.value.supplierId,
+      supplier: supplier?.name || '',
+      items,
+      remark: purchaseForm.value.remark || '',
+      isNewProduct: true // 标识为新商品入库，自动完成入库操作
+    }
+
+    await api.post('/purchases', orderData)
+    
+    showPurchaseDialog.value = false
+    MessagePlugin.success('采购订单创建成功，已自动入库')
+    router.push('/products')
+  } catch (error) {
+    console.error('创建采购订单失败:', error)
+    MessagePlugin.error(error.message || '创建采购订单失败')
+  } finally {
+    submitting.value = false
+  }
 }
 
 const goBack = () => {
@@ -1459,20 +1602,67 @@ onMounted(() => {
     }
   }
 
-  // 创建采购单引导弹窗
-  .purchase-dialog {
+  // 确认创建商品弹窗
+  .confirm-dialog {
     :deep(.t-dialog__content) {
       background: $bg-white;
       border-radius: $radius-lg;
       padding: 0;
     }
 
-    :deep(.t-dialog__header) {
-      padding: $spacing-md $spacing-lg;
-      font-size: $font-md;
-      font-weight: 600;
-      color: $text-primary;
-      border-bottom: 1px solid $border-light;
+    :deep(.t-dialog__body) {
+      padding: 0;
+    }
+
+    :deep(.t-dialog__close) {
+      display: none;
+    }
+  }
+
+  .confirm-dialog-container {
+    width: 100%;
+
+    .confirm-dialog-body {
+      text-align: center;
+      padding: 24px 20px 16px;
+
+      .confirm-dialog-icon {
+        font-size: 40px;
+        color: $primary-color;
+        margin-bottom: 12px;
+      }
+
+      .confirm-dialog-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: $text-primary;
+        margin-bottom: 6px;
+      }
+
+      .confirm-dialog-hint {
+        font-size: 13px;
+        color: $text-secondary;
+      }
+    }
+
+    .confirm-dialog-footer {
+      display: flex;
+      gap: 12px;
+      padding: 0 20px 16px;
+
+      .t-button {
+        flex: 1;
+        border-radius: 8px;
+      }
+    }
+  }
+
+  // 创建采购单弹窗（必填流程）
+  .purchase-dialog {
+    :deep(.t-dialog__content) {
+      background: $bg-white;
+      border-radius: $radius-lg;
+      padding: 0;
     }
 
     :deep(.t-dialog__body) {
@@ -1487,36 +1677,109 @@ onMounted(() => {
   .purchase-dialog-container {
     width: 100%;
 
-    .purchase-dialog-body {
-      text-align: center;
-      padding: $spacing-lg;
+    .purchase-dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 20px;
+      border-bottom: 1px solid $border-lighter;
 
       .purchase-dialog-icon {
-        font-size: 40px;
+        font-size: 20px;
         color: $warning-color;
-        margin-bottom: $spacing-md;
       }
 
-      p {
-        font-size: $font-md;
+      .purchase-dialog-title {
+        font-size: 16px;
+        font-weight: 600;
         color: $text-primary;
-        margin-bottom: $spacing-xs;
+      }
+    }
+
+    .purchase-dialog-body {
+      padding: 16px 20px;
+
+      .purchase-dialog-tip {
+        font-size: 13px;
+        color: $text-secondary;
+        margin-bottom: 16px;
+        text-align: center;
       }
 
-      .purchase-dialog-hint {
-        font-size: $font-sm;
-        color: $text-secondary;
+      .purchase-form {
+        .purchase-form-item {
+          margin-bottom: 12px;
+
+          .purchase-form-label {
+            display: block;
+            font-size: 13px;
+            color: $text-secondary;
+            margin-bottom: 6px;
+
+            .required {
+              color: $error-color;
+              margin-left: 2px;
+            }
+          }
+
+          .purchase-form-select {
+            width: 100%;
+          }
+
+          .purchase-form-remark {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid $border-color;
+            border-radius: 6px;
+            font-size: 14px;
+            color: $text-primary;
+            resize: none;
+            outline: none;
+
+            &:focus {
+              border-color: $primary-color;
+            }
+
+            &::placeholder {
+              color: $text-placeholder;
+            }
+          }
+
+          .purchase-detail-list {
+            background: $bg-color;
+            border-radius: 6px;
+            padding: 8px 12px;
+            max-height: 120px;
+            overflow-y: auto;
+
+            .purchase-detail-item {
+              display: flex;
+              justify-content: space-between;
+              padding: 6px 0;
+              font-size: 13px;
+
+              .purchase-detail-spec {
+                color: $text-primary;
+              }
+
+              .purchase-detail-stock {
+                color: $text-secondary;
+              }
+            }
+          }
+        }
       }
     }
 
     .purchase-dialog-footer {
       display: flex;
-      gap: $spacing-md;
-      padding: $spacing-md $spacing-lg;
+      gap: 12px;
+      padding: 12px 20px 16px;
 
       .t-button {
         flex: 1;
-        border-radius: $radius-md;
+        border-radius: 8px;
       }
     }
   }

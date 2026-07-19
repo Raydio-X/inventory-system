@@ -27,11 +27,11 @@ class MySQLDataStore {
   async generateOrderNo(prefix = 'XS') {
     const date = moment().format('YYYYMMDD');
     const countQuery = `
-      SELECT COUNT(*) as count FROM sales_orders 
+      SELECT COUNT(*) as count FROM sales_orders
       WHERE DATE(created_at) = CURDATE()
     `;
-    const [result] = await db.query(countQuery);
-    const count = result[0].count + 1;
+    const result = await db.query(countQuery);
+    const count = (result[0]?.count || 0) + 1;
     return `${prefix}${date}${String(count).padStart(4, '0')}`;
   }
 
