@@ -97,6 +97,7 @@ export const useCustomerStore = defineStore('customer', () => {
     customers,
     searchKeyword,
     filteredCustomers,
+    fetchCustomers,
     addCustomer,
     updateCustomer,
     deleteCustomer,

@@ -3,6 +3,8 @@
  */
 const db = require('../config/database');
 const { NotFoundError, ValidationError } = require('../middleware/errorHandler');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * 计算商品的平均成本
@@ -22,8 +24,11 @@ async function calculateAvgCost(productId) {
       WHERE oi.product_id = ? AND o.status = 'completed'
     `, [productId]);
 
-    const totalQuantity = result[0]?.total_quantity || 0;
-    const totalCost = result[0]?.total_cost || 0;
+
+    const row = result[0];
+    const totalQuantity = row?.total_quantity || 0;
+    const totalCost = row?.total_cost || 0;
+
 
     if (totalQuantity === 0) {
       return 0;
@@ -49,6 +54,8 @@ async function batchCalculateAvgCost(productIds) {
   }
 
   try {
+    // 使用 OR 条件代替 IN
+    const placeholders = productIds.map(() => 'oi.product_id = ?').join(' OR ');
     const result = await db.query(`
       SELECT 
         oi.product_id,
@@ -56,9 +63,10 @@ async function batchCalculateAvgCost(productIds) {
         SUM(oi.total_price) as total_cost
       FROM purchase_order_items oi
       JOIN purchase_orders o ON oi.order_id = o.id
-      WHERE oi.product_id IN (?) AND o.status = 'completed'
+      WHERE (${placeholders}) AND o.status = 'completed'
       GROUP BY oi.product_id
-    `, [productIds]);
+    `, productIds);
+
 
     const avgCostMap = {};
     
@@ -387,7 +395,7 @@ const updateProduct = async (req, res, next) => {
 };
 
 /**
- * 删除商品（软删除）
+ * 删除商品（软删除），同时删除商品图片
  */
 const deleteProduct = async (req, res, next) => {
   try {
@@ -397,6 +405,29 @@ const deleteProduct = async (req, res, next) => {
 
     if (!existing) {
       throw new NotFoundError('商品不存在');
+    }
+
+    // 删除商品图片文件
+    if (existing.image) {
+      try {
+        // 图片路径格式: /api/uploads/products/xxx.jpg 或 /uploads/products/xxx.jpg
+        let imagePath = existing.image;
+        // 去掉 /api 前缀（如果有）
+        if (imagePath.startsWith('/api/')) {
+          imagePath = imagePath.replace('/api', '');
+        }
+        // 构建实际文件路径
+        const fullPath = path.join(__dirname, '..', '..', imagePath);
+        
+        // 检查文件是否存在并删除
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          console.log(`[商品删除] 已删除图片: ${fullPath}`);
+        }
+      } catch (err) {
+        // 图片删除失败不影响商品删除
+        console.error('[商品删除] 删除图片失败:', err.message);
+      }
     }
 
     await db.query("UPDATE products SET status = 'deleted' WHERE id = ?", [id]);
