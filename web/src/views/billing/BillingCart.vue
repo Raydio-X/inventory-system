@@ -51,40 +51,59 @@
 
     <!-- 购物车商品列表 -->
     <div v-if="cartItems.length > 0" class="cart-list">
-      <div v-for="(item, index) in cartItems" :key="item.skuId" class="cart-item">
-        <!-- 第一行：商品名 + 规格标签 + 删除 -->
-        <div class="item-top">
-          <div class="item-name">{{ item.productName }}</div>
-          <div class="item-spec">
-            <span class="spec-tag">{{ item.color }}</span>
-            <span class="spec-tag">{{ item.size }}</span>
-          </div>
-          <div class="item-del" @click="remove(item.skuId)">
-            <t-icon name="close" />
-          </div>
-        </div>
-        <!-- 第二行：原价 + 单价×数量 -->
-        <div class="item-mid">
-          <div class="original-price">
-            原价 ¥{{ formatAmount(item.originalPrice) }}
-          </div>
-          <div class="item-amount-row">
+      <div v-for="group in groupedCartItems" :key="group.productId" class="cart-group">
+        <!-- 商品组标题：商品名 + 统一售价修改 -->
+        <div class="group-header">
+          <div class="group-name">{{ group.productName }}</div>
+          <div class="group-price-row">
+            <span class="group-price-label">售价</span>
             <div class="price-input-wrap">
               <span class="price-prefix">¥</span>
-              <input v-model.number="item.price" type="number" step="0.01" min="0" class="price-input" @focus="$event.target.select()" />
+              <input
+                :value="getProductPrice(group.productId)"
+                type="number"
+                step="0.01"
+                min="0"
+                class="price-input"
+                @focus="$event.target.select()"
+                @input="updateProductPrice(group.productId, Number($event.target.value) || 0)"
+              />
             </div>
-            <span class="amount-x">×</span>
-            <div class="item-qty">
-              <span class="qty-btn" @click="decrease(item)">-</span>
-              <span class="qty-value">{{ item.quantity }}</span>
-              <span class="qty-btn" @click="increase(item)">+</span>
-            </div>
+            <span class="group-spec-count">{{ group.items.length }}个规格</span>
           </div>
         </div>
-        <!-- 第三行：小计金额 -->
-        <div class="item-bottom">
-          <span class="subtotal-label">小计</span>
-          <span class="item-subtotal">¥{{ formatAmount(item.price * item.quantity) }}</span>
+        <!-- 规格明细列表 -->
+        <div v-for="item in group.items" :key="item.skuId" class="cart-item">
+          <!-- 第一行：规格标签 + 删除 -->
+          <div class="item-top">
+            <div class="item-spec">
+              <span class="spec-tag">{{ item.color }}</span>
+              <span class="spec-tag">{{ item.size }}</span>
+            </div>
+            <div class="item-del" @click="remove(item.skuId)">
+              <t-icon name="close" />
+            </div>
+          </div>
+          <!-- 第二行：原价 + 数量调整 -->
+          <div class="item-mid">
+            <div class="original-price">
+              原价 ¥{{ formatAmount(item.originalPrice) }}
+            </div>
+            <div class="item-amount-row">
+              <span class="current-price">¥{{ formatAmount(item.price) }}</span>
+              <span class="amount-x">×</span>
+              <div class="item-qty">
+                <span class="qty-btn" @click="decrease(item)">-</span>
+                <span class="qty-value">{{ item.quantity }}</span>
+                <span class="qty-btn" @click="increase(item)">+</span>
+              </div>
+            </div>
+          </div>
+          <!-- 第三行：小计金额 -->
+          <div class="item-bottom">
+            <span class="subtotal-label">小计</span>
+            <span class="item-subtotal">¥{{ formatAmount(item.price * item.quantity) }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -391,6 +410,39 @@ const cartTotalOriginal = computed(() => billingStore.cartTotalOriginal)
 const cartTotal = computed(() => billingStore.cartTotal)
 const paymentStatus = computed(() => billingStore.paymentStatus)
 const currentCustomer = computed(() => billingStore.currentCustomer)
+
+// 按商品分组购物车项
+const groupedCartItems = computed(() => {
+  const groups = {}
+  cartItems.value.forEach(item => {
+    const key = item.productId
+    if (!groups[key]) {
+      groups[key] = {
+        productId: item.productId,
+        productName: item.productName,
+        items: []
+      }
+    }
+    groups[key].items.push(item)
+  })
+  return Object.values(groups)
+})
+
+// 更新商品统一售价
+const updateProductPrice = (productId, newPrice) => {
+  const group = groupedCartItems.value.find(g => g.productId === productId)
+  if (group) {
+    group.items.forEach(item => {
+      item.price = newPrice
+    })
+  }
+}
+
+// 获取商品当前售价（取第一个规格的价格）
+const getProductPrice = (productId) => {
+  const group = groupedCartItems.value.find(g => g.productId === productId)
+  return group && group.items.length > 0 ? group.items[0].price : 0
+}
 
 const discountPercent = ref(100)
 const roundOff = ref(0)
@@ -771,33 +823,93 @@ const goBack = () => {
 
   // ========== 商品列表 ==========
   .cart-list {
-    .cart-item {
+    // 商品分组
+    .cart-group {
       background: white;
       border-radius: 10px;
-      padding: 12px 14px;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
       box-shadow: $shadow-sm;
+      overflow: hidden;
+
+      .group-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        background: #f5f5f5;
+        border-bottom: 1px solid $border-lighter;
+
+        .group-name {
+          font-size: 16px;
+          font-weight: 600;
+          color: $text-primary;
+        }
+
+        .group-price-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+
+          .group-price-label {
+            font-size: 13px;
+            color: $text-secondary;
+          }
+
+          .price-input-wrap {
+            display: flex;
+            align-items: center;
+            border: 1px solid $primary-color;
+            border-radius: 6px;
+            height: 28px;
+            padding: 0 6px;
+            background: white;
+
+            .price-prefix {
+              font-size: 13px;
+              color: $primary-color;
+              font-weight: 500;
+            }
+
+            .price-input {
+              width: 60px;
+              border: none;
+              outline: none;
+              font-size: 14px;
+              font-weight: 500;
+              color: $text-primary;
+              text-align: center;
+              background: transparent;
+
+              &::placeholder {
+                color: $text-placeholder;
+              }
+            }
+          }
+
+          .group-spec-count {
+            font-size: 12px;
+            color: $text-placeholder;
+          }
+        }
+      }
+    }
+
+    .cart-item {
+      background: white;
+      padding: 10px 14px;
+      border-bottom: 1px solid $border-lighter;
+
+      &:last-child {
+        border-bottom: none;
+      }
 
       .item-top {
         display: flex;
         align-items: center;
-        margin-bottom: 8px;
-
-        .item-name {
-          font-size: 18px;
-          font-weight: 600;
-          color: $text-primary;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          min-width: 0;
-          flex-shrink: 1;
-        }
 
         .item-spec {
           display: flex;
           gap: 4px;
-          margin-left: 8px;
           flex-shrink: 0;
 
           .spec-tag {
@@ -824,7 +936,7 @@ const goBack = () => {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 8px;
+        margin-top: 8px;
 
         .original-price {
           font-size: 13px;
@@ -838,31 +950,12 @@ const goBack = () => {
           gap: 6px;
           margin-left: auto;
 
-          .price-input-wrap {
-            display: flex;
-            align-items: center;
-            border: 1px solid $border-color;
-            border-radius: 6px;
-            height: 28px;
-            padding: 0 6px;
-            background: white;
-
-            .price-prefix {
-              font-size: 12px;
-              color: $text-placeholder;
-              margin-right: 2px;
-              flex-shrink: 0;
-            }
-
-            .price-input {
-              width: 52px;
-              border: none;
-              outline: none;
-              font-size: 13px;
-              color: $text-primary;
-              height: 100%;
-              &::placeholder { color: $text-placeholder; font-size: 11px; }
-            }
+          .current-price {
+            font-size: 14px;
+            font-weight: 500;
+            color: $primary-color;
+            min-width: 50px;
+            text-align: right;
           }
 
           .amount-x {

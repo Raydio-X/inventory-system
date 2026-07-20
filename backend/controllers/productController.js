@@ -289,7 +289,7 @@ const createProduct = async (req, res, next) => {
         const skuId = generateSkuId();
         await connection.query(
           'INSERT INTO skus (id, product_id, color, size, stock, price) VALUES (?, ?, ?, ?, ?, ?)',
-          [skuId, productId, sku.color, sku.size, sku.stock || 0, sku.price || price]
+          [skuId, productId, sku.color, sku.size, sku.stock || 0, price]
         );
       }
     });
@@ -355,20 +355,23 @@ const updateProduct = async (req, res, next) => {
           await connection.query(`DELETE FROM skus WHERE id IN (${placeholders})`, idsToDelete);
         }
 
+        // 获取商品售价（用于SKU）
+        const productPrice = price !== undefined ? price : existing.price;
+
         // 更新或插入 SKU
         for (const sku of skus) {
           if (sku.id && currentSkuIds.includes(sku.id)) {
             // 更新已有 SKU（保留 ID，保持关联数据完整性）
             await connection.query(
               'UPDATE skus SET color = ?, size = ?, stock = ?, price = ? WHERE id = ?',
-              [sku.color, sku.size, sku.stock || 0, sku.price || price || existing.price, sku.id]
+              [sku.color, sku.size, sku.stock || 0, productPrice, sku.id]
             );
           } else {
             // 新增 SKU
             const skuId = sku.id || generateSkuId();
             await connection.query(
               'INSERT INTO skus (id, product_id, color, size, stock, price) VALUES (?, ?, ?, ?, ?, ?)',
-              [skuId, id, sku.color, sku.size, sku.stock || 0, sku.price || price || existing.price]
+              [skuId, id, sku.color, sku.size, sku.stock || 0, productPrice]
             );
           }
         }

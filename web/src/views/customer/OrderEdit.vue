@@ -119,12 +119,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useBillingStore } from '@/store/billing'
 import { useCustomerStore } from '@/store/customer'
+import { useProductStore } from '@/store/product'
 import { MessagePlugin } from 'tdesign-vue-next'
 
 const router = useRouter()
 const route = useRoute()
 const billingStore = useBillingStore()
 const customerStore = useCustomerStore()
+const productStore = useProductStore()
 
 const customerId = computed(() => route.params.customerId)
 const orderId = computed(() => route.params.orderId)
@@ -177,6 +179,7 @@ const removeItem = (index) => {
 
 const loadOrder = async () => {
   await billingStore.initData()
+  await productStore.initData()
   const found = billingStore.salesOrders.find(o => o.id.toString() === orderId.value)
   if (!found) {
     MessagePlugin.error('订单不存在')
@@ -185,15 +188,20 @@ const loadOrder = async () => {
   }
   order.value = found
   editForm.value = {
-    items: (found.items || []).map(item => ({
-      skuId: item.skuId,
-      productName: item.productName,
-      color: item.color,
-      size: item.size,
-      price: Number(item.price),
-      quantity: item.quantity,
-      costPrice: Number(item.costPrice || 0)
-    })),
+    items: (found.items || []).map(item => {
+      // 从商品列表中获取最新的平均成本价
+      const product = productStore.products.find(p => p.skus?.some(s => s.id === item.skuId))
+      const latestCostPrice = product ? (product.avgCost || product.costPrice || 0) : Number(item.costPrice || 0)
+      return {
+        skuId: item.skuId,
+        productName: item.productName,
+        color: item.color,
+        size: item.size,
+        price: Number(item.price),
+        quantity: item.quantity,
+        costPrice: latestCostPrice
+      }
+    }),
     paidAmount: Number(found.paidAmount || 0),
     remark: found.remark || ''
   }

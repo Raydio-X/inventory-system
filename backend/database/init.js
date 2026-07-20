@@ -115,7 +115,7 @@ const TABLE_DEFINITIONS = [
       CREATE TABLE IF NOT EXISTS customers (
         id VARCHAR(50) PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
-        phone VARCHAR(20) NOT NULL UNIQUE,
+        phone VARCHAR(20) DEFAULT NULL,
         address VARCHAR(500),
         remark VARCHAR(500),
         total_spent DECIMAL(10, 2) DEFAULT 0,
@@ -546,6 +546,48 @@ async function checkAndMigrateSchema(connection) {
         ADD COLUMN total_debt DECIMAL(10, 2) DEFAULT 0 AFTER order_count
       `);
       log.success('  customers 表 total_debt 字段添加完成');
+    }
+
+    // 检查 customers 表 phone 字段是否允许 NULL（修复唯一约束冲突）
+    const [phoneColumns] = await connection.query(
+      `SELECT IS_NULLABLE FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'phone'`,
+      [DB_CONFIG.database]
+    );
+
+    if (phoneColumns.length > 0 && phoneColumns[0].IS_NULLABLE === 'NO') {
+      log.info('  检测到 customers.phone 为 NOT NULL，正在迁移为允许 NULL...');
+      // 先将空字符串转为 NULL
+      await connection.query("UPDATE customers SET phone = NULL WHERE phone = ''");
+      // 删除旧的唯一约束
+      try {
+        await connection.query('ALTER TABLE customers DROP INDEX phone');
+      } catch (dropErr) {
+        // 约束可能不存在
+      }
+      // 修改字段允许 NULL
+      await connection.query(`
+        ALTER TABLE customers 
+        MODIFY COLUMN phone VARCHAR(20) DEFAULT NULL
+      `);
+      log.success('  customers 表 phone 字段迁移完成');
+    }
+
+    // 删除可能存在的唯一约束（电话允许重复）
+    try {
+      const [uniqueKeys] = await connection.query(
+        `SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS 
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers' AND CONSTRAINT_TYPE = 'UNIQUE'`,
+        [DB_CONFIG.database]
+      );
+      for (const key of uniqueKeys) {
+        if (key.CONSTRAINT_NAME.includes('phone')) {
+          await connection.query(`ALTER TABLE customers DROP INDEX ${key.CONSTRAINT_NAME}`);
+          log.success(`  已删除 customers.phone 唯一约束 (${key.CONSTRAINT_NAME})`);
+        }
+      }
+    } catch (err) {
+      // 忽略错误
     }
 
     // 检查 return_orders 表 customer_id 字段是否允许 NULL

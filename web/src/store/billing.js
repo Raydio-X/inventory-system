@@ -137,7 +137,8 @@ export const useBillingStore = defineStore('billing', () => {
         quantity,
         originalPrice: sku.price,
         price,
-        stock: sku.stock
+        stock: sku.stock,
+        costPrice: product.avgCost || product.costPrice || 0
       })
     }
   }
@@ -227,7 +228,7 @@ export const useBillingStore = defineStore('billing', () => {
         size: item.size,
         quantity: item.quantity,
         price: item.price,
-        costPrice: item.originalPrice || item.price
+        costPrice: item.costPrice || 0
       })),
       totalAmount: cartTotal.value,
       paidAmount,

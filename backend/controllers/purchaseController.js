@@ -233,7 +233,7 @@ const createPurchaseOrder = async (req, res, next) => {
 
           // 获取当前SKU信息
           const [skuRows] = await connection.execute(
-            'SELECT stock, price FROM skus WHERE id = ?',
+            'SELECT stock FROM skus WHERE id = ?',
             [item.skuId]
           );
           const currentSku = skuRows[0];
@@ -246,20 +246,11 @@ const createPurchaseOrder = async (req, res, next) => {
             [item.quantity, item.skuId]
           );
 
-          // 移动加权平均法计算商品成本价
+          // 新商品入库：直接设置商品成本价为采购成本价
           if (item.costPrice > 0) {
-            const oldStock = currentSku.stock;
-            const oldPrice = Number(currentSku.price);
-            const newStock = oldStock + item.quantity;
-            const newCostPrice = Number(item.costPrice);
-            const avgPrice = newStock > 0
-              ? (oldStock * oldPrice + item.quantity * newCostPrice) / newStock
-              : newCostPrice;
-
-            // 更新商品成本价
             await connection.execute(
               'UPDATE products SET cost_price = ? WHERE id = ?',
-              [Math.round(avgPrice * 100) / 100, item.productId]
+              [item.costPrice, item.productId]
             );
           }
 
@@ -331,7 +322,7 @@ const confirmPurchase = async (req, res, next) => {
 
         // 获取当前SKU信息
         const [skuRows] = await connection.execute(
-          'SELECT stock, price FROM skus WHERE id = ?',
+          'SELECT stock FROM skus WHERE id = ?',
           [item.sku_id]
         );
         const currentSku = skuRows[0];
@@ -346,18 +337,27 @@ const confirmPurchase = async (req, res, next) => {
 
         // 移动加权平均法计算商品成本价
         if (item.cost_price > 0) {
+          // 获取商品当前成本价
+          const [productRows] = await connection.execute(
+            'SELECT cost_price FROM products WHERE id = ?',
+            [item.product_id]
+          );
+          const currentProduct = productRows[0];
+          const oldCostPrice = Number(currentProduct?.cost_price || 0);
+
           const oldStock = currentSku.stock;
-          const oldPrice = Number(currentSku.price);
           const newStock = oldStock + item.quantity;
           const newCostPrice = Number(item.cost_price);
-          const avgPrice = newStock > 0
-            ? (oldStock * oldPrice + item.quantity * newCostPrice) / newStock
+
+          // 移动加权平均：新成本 = (旧库存 * 旧成本 + 入库数量 * 入库成本) / 新库存
+          const avgCostPrice = newStock > 0
+            ? (oldStock * oldCostPrice + item.quantity * newCostPrice) / newStock
             : newCostPrice;
 
           // 更新商品成本价
           await connection.execute(
             'UPDATE products SET cost_price = ? WHERE id = ?',
-            [Math.round(avgPrice * 100) / 100, item.product_id]
+            [Math.round(avgCostPrice * 100) / 100, item.product_id]
           );
         }
 

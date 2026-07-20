@@ -94,18 +94,13 @@ const createCustomer = async (req, res, next) => {
       throw new ValidationError('客户姓名不能为空');
     }
 
-    // 检查手机号是否已存在
-    if (phone) {
-      const [existing] = await db.query('SELECT * FROM customers WHERE phone = ?', [phone]);
-      if (existing) {
-        throw new ValidationError('该手机号已存在');
-      }
-    }
+    // 处理手机号：空字符串或空格视为无手机号（转为NULL）
+    const trimmedPhone = phone?.trim() || null;
 
     const customerId = generateCustomerId();
     await db.query(
       'INSERT INTO customers (id, name, phone, remark, total_spent, order_count, total_debt) VALUES (?, ?, ?, ?, 0, 0, 0)',
-      [customerId, name, phone || '', remark || '']
+      [customerId, name, trimmedPhone, remark || '']
     );
 
     const [newCustomer] = await db.query('SELECT * FROM customers WHERE id = ?', [customerId]);
@@ -134,19 +129,14 @@ const updateCustomer = async (req, res, next) => {
       throw new NotFoundError('客户不存在');
     }
 
-    // 如果更新手机号，检查是否已存在
-    if (phone && phone !== existing.phone) {
-      const [duplicate] = await db.query('SELECT * FROM customers WHERE phone = ? AND id != ?', [phone, id]);
-      if (duplicate) {
-        throw new ValidationError('该手机号已存在');
-      }
-    }
+    // 处理手机号：空字符串或空格视为无手机号（转为NULL）
+    const trimmedPhone = phone !== undefined ? (phone?.trim() || null) : existing.phone;
 
     await db.query(
       'UPDATE customers SET name = ?, phone = ?, remark = ? WHERE id = ?',
       [
         name !== undefined ? name : existing.name,
-        phone !== undefined ? phone : existing.phone,
+        trimmedPhone,
         remark !== undefined ? remark : existing.remark,
         id
       ]

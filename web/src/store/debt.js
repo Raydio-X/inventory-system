@@ -17,7 +17,7 @@ export const useDebtStore = defineStore('debt', () => {
 
   // 总欠款金额
   const totalDebt = computed(() => {
-    return debtCustomers.value.reduce((sum, c) => sum + c.totalDebt, 0)
+    return debtCustomers.value.reduce((sum, c) => sum + (Number(c.totalDebt) || 0), 0)
   })
 
   // 欠款客户数量

@@ -132,15 +132,23 @@
 
               <!-- 商品列表 -->
               <div class="detail-items">
-                <div v-for="item in getOrderItems(order)" :key="item.skuId" class="detail-item">
-                  <span class="col-name">{{ item.productName }}</span>
-                  <span class="col-spec">
-                    <span class="sku-tag">{{ item.color || '-' }}</span>
-                    <span class="sku-tag">{{ item.size || '-' }}</span>
-                  </span>
-                  <span class="col-price">¥{{ item.price }}</span>
-                  <span class="col-qty">{{ item.quantity }}</span>
-                  <span class="col-sub">¥{{ formatAmount(item.price * item.quantity) }}</span>
+                <div v-for="group in groupItemsByProduct(getOrderItems(order))" :key="group.productName" class="product-group">
+                  <!-- 商品名称行 -->
+                  <div class="product-group-header">
+                    <span class="group-name">{{ group.productName }}</span>
+                    <span class="group-count">{{ group.items.length }}个规格</span>
+                  </div>
+                  <!-- 规格明细 -->
+                  <div v-for="item in group.items" :key="item.skuId" class="detail-item">
+                    <span class="col-name"></span>
+                    <span class="col-spec">
+                      <span class="sku-tag">{{ item.color || '-' }}</span>
+                      <span class="sku-tag">{{ item.size || '-' }}</span>
+                    </span>
+                    <span class="col-price">¥{{ item.price }}</span>
+                    <span class="col-qty">{{ item.quantity }}</span>
+                    <span class="col-sub">¥{{ formatAmount(item.price * item.quantity) }}</span>
+                  </div>
                 </div>
               </div>
 
@@ -268,6 +276,23 @@ const toggleOrder = (orderId) => {
 
 // 获取订单商品明细
 const getOrderItems = (order) => order.items || []
+
+// 按商品名称分组订单项
+const groupItemsByProduct = (items) => {
+  if (!items || items.length === 0) return []
+  const groups = {}
+  items.forEach(item => {
+    const name = item.productName || '未知商品'
+    if (!groups[name]) {
+      groups[name] = {
+        productName: name,
+        items: []
+      }
+    }
+    groups[name].items.push(item)
+  })
+  return Object.values(groups)
+}
 
 const getStatusText = (status) => {
   const texts = {
@@ -802,6 +827,38 @@ onMounted(() => {
 
           // 商品行
           .detail-items {
+            // 商品分组
+            .product-group {
+              margin-bottom: 12px;
+
+              &:last-child {
+                margin-bottom: 0;
+              }
+
+              .product-group-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 6px 0;
+                background: #f5f5f5;
+                border-radius: 4px;
+                margin-bottom: 4px;
+                padding-left: 8px;
+                padding-right: 8px;
+
+                .group-name {
+                  font-size: 14px;
+                  font-weight: 600;
+                  color: $text-primary;
+                }
+
+                .group-count {
+                  font-size: 12px;
+                  color: $text-placeholder;
+                }
+              }
+            }
+
             .detail-item {
               display: flex;
               align-items: center;

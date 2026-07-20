@@ -57,14 +57,30 @@
         </div>
 
         <div class="form-item">
-          <label class="form-label">成本</label>
+          <label class="form-label">{{ isEditMode ? '平均成本' : '成本' }}</label>
           <div class="cost-input-box">
             <span class="cost-prefix">¥</span>
             <input
               v-model.number="product.costPrice"
               type="number"
               class="cost-field"
-              placeholder="请输入成本价"
+              :class="{ 'input-disabled': isEditMode }"
+              :disabled="isEditMode"
+              :placeholder="isEditMode ? '（基于采购订单计算）' : '请输入成本价'"
+            />
+          </div>
+          <span v-if="isEditMode" class="field-hint">成本由采购订单自动计算，不可修改</span>
+        </div>
+
+        <div class="form-item">
+          <label class="form-label required">售价</label>
+          <div class="cost-input-box">
+            <span class="cost-prefix">¥</span>
+            <input
+              v-model.number="product.price"
+              type="number"
+              class="cost-field"
+              placeholder="请输入售价"
             />
           </div>
         </div>
@@ -163,9 +179,7 @@
                   placeholder="如：XL"
                 />
               </div>
-            </div>
 
-            <div class="sku-row">
               <div class="sku-field">
                 <label class="sku-label">库存</label>
                 <input
@@ -174,19 +188,6 @@
                   class="sku-input"
                   placeholder="请输入库存"
                 />
-              </div>
-
-              <div class="sku-field">
-                <label class="sku-label">价格</label>
-                <div class="sku-price-wrapper">
-                  <span class="sku-price-prefix">¥</span>
-                  <input
-                    v-model.number="sku.price"
-                    type="number"
-                    class="sku-input"
-                    placeholder="请输入价格"
-                  />
-                </div>
               </div>
             </div>
           </div>
@@ -251,29 +252,14 @@
           <span class="batch-hint">例如输入 S, M, L, XL 将生成4条规格</span>
         </div>
 
-        <div class="batch-row">
-          <div class="batch-field batch-field-half">
-            <label class="batch-label">库存</label>
-            <input
-              v-model.number="batchData.stock"
-              type="number"
-              class="batch-input"
-              placeholder="请输入库存"
-            />
-          </div>
-
-          <div class="batch-field batch-field-half">
-            <label class="batch-label">价格</label>
-            <div class="batch-price-wrapper">
-              <span class="batch-price-prefix">¥</span>
-              <input
-                v-model.number="batchData.price"
-                type="number"
-                class="batch-input"
-                placeholder="请输入价格"
-              />
-            </div>
-          </div>
+        <div class="batch-field">
+          <label class="batch-label">库存</label>
+          <input
+            v-model.number="batchData.stock"
+            type="number"
+            class="batch-input"
+            placeholder="请输入库存"
+          />
         </div>
 
         <div class="batch-preview" v-if="batchPreview.length > 0">
@@ -448,6 +434,7 @@ const loading = ref(false)
 const product = ref({
   name: '',
   costPrice: null,
+  price: null,
   categoryId: null,
   supplierId: null,
   skus: []
@@ -478,8 +465,8 @@ const categoryOptions = computed(() =>
 )
 
 const canSave = computed(() =>
-  product.value.name && product.value.skus.length > 0 &&
-  product.value.skus.every(sku => sku.color && sku.size && sku.price > 0)
+  product.value.name && product.value.price > 0 && product.value.skus.length > 0 &&
+  product.value.skus.every(sku => sku.color && sku.size)
 )
 
 const selectImage = () => {
@@ -538,8 +525,7 @@ const addSku = () => {
   product.value.skus.push({
     color: '',
     size: '',
-    stock: null,
-    price: null
+    stock: null
   })
 }
 
@@ -565,8 +551,7 @@ const showBatchAddDialog = ref(false)
 const batchData = ref({
   color: '',
   sizes: '',
-  stock: null,
-  price: null
+  stock: null
 })
 
 // 批量添加预览（计算属性）
@@ -582,8 +567,7 @@ const batchPreview = computed(() => {
   return sizes.map(size => ({
     color,
     size,
-    stock: batchData.value.stock || null,
-    price: batchData.value.price || null
+    stock: batchData.value.stock || null
   }))
 })
 
@@ -592,8 +576,7 @@ const openBatchAddDialog = () => {
   batchData.value = {
     color: '',
     sizes: '',
-    stock: null,
-    price: null
+    stock: null
   }
   showBatchAddDialog.value = true
 }
@@ -607,8 +590,7 @@ const confirmBatchAdd = () => {
     product.value.skus.push({
       color: sku.color,
       size: sku.size,
-      stock: sku.stock,
-      price: sku.price
+      stock: sku.stock
     })
   })
 
@@ -628,6 +610,7 @@ const loadProductData = async () => {
       // 填充表单数据
       product.value = {
         name: productData.name,
+        price: productData.price || 0,
         costPrice: productData.costPrice || 0,
         categoryId: productData.category ? Number(productData.category) : null,
         supplierId: productData.supplierId || null,
@@ -635,8 +618,7 @@ const loadProductData = async () => {
           id: sku.id,
           color: sku.color,
           size: sku.size,
-          stock: sku.stock,
-          price: sku.price
+          stock: sku.stock
         })) : []
       }
       
@@ -683,6 +665,10 @@ const saveProduct = () => {
     MessagePlugin.warning('请输入商品名称')
     return
   }
+  if (!product.value.price || product.value.price <= 0) {
+    MessagePlugin.warning('请输入商品售价')
+    return
+  }
   if (product.value.skus.length === 0) {
     MessagePlugin.warning('请至少添加一个规格')
     return
@@ -695,10 +681,6 @@ const saveProduct = () => {
     }
     if (!sku.size || !sku.size.trim()) {
       MessagePlugin.warning(`规格 #${i + 1}：请输入尺码`)
-      return
-    }
-    if (!sku.price || sku.price <= 0) {
-      MessagePlugin.warning(`规格 #${i + 1}：请输入有效的价格`)
       return
     }
   }
@@ -724,14 +706,13 @@ const confirmSaveProduct = async () => {
       category: product.value.categoryId || null,
       supplierId: product.value.supplierId || null,
       image: productImage.value || '',
-      price: product.value.skus[0]?.price || 0,
+      price: product.value.price || 0,
       costPrice: product.value.costPrice || 0,
       skus: product.value.skus.map(sku => ({
         id: sku.id || undefined,
         color: sku.color.trim(),
         size: sku.size.trim(),
-        stock: sku.stock || 0,
-        price: sku.price
+        stock: sku.stock || 0
       }))
     }
 
@@ -769,14 +750,13 @@ const doUpdateProduct = async () => {
       category: product.value.categoryId || null,
       supplierId: product.value.supplierId || null,
       image: productImage.value || '',
-      price: product.value.skus[0]?.price || 0,
+      price: product.value.price || 0,
       costPrice: product.value.costPrice || 0,
       skus: product.value.skus.map(sku => ({
         id: sku.id || undefined,
         color: sku.color.trim(),
         size: sku.size.trim(),
-        stock: sku.stock || 0,
-        price: sku.price
+        stock: sku.stock || 0
       }))
     }
 
@@ -789,10 +769,22 @@ const doUpdateProduct = async () => {
   }
 }
 
-// 取消创建采购单 -> 终止流程，返回商品列表
-const cancelPurchase = () => {
+// 取消创建采购单 -> 删除已创建的商品，返回商品列表
+const cancelPurchase = async () => {
+  // 如果有已保存的商品，删除它
+  if (savedProductId.value) {
+    try {
+      await productStore.deleteProduct(savedProductId.value)
+      MessagePlugin.info('已取消创建采购订单，商品未保存')
+    } catch (error) {
+      console.error('删除商品失败:', error)
+      MessagePlugin.warning('取消采购订单成功，但商品删除失败，请手动删除')
+    }
+  } else {
+    MessagePlugin.info('已取消创建采购订单')
+  }
+  
   showPurchaseDialog.value = false
-  MessagePlugin.info('已取消创建采购订单')
   router.push('/products')
 }
 
@@ -821,7 +813,7 @@ const submitPurchase = async () => {
         color: sku.color,
         size: sku.size,
         quantity: sku.stock || 0,
-        costPrice: sku.price || 0
+        costPrice: product.value.costPrice || 0  // 使用商品成本价，而不是SKU售价
       }
     }).filter(item => item.quantity > 0)
 
@@ -1148,7 +1140,22 @@ onMounted(() => {
               -webkit-appearance: none;
               margin: 0;
             }
+
+            // 禁用状态样式
+            &.input-disabled {
+              cursor: not-allowed;
+              color: $text-secondary;
+              background: transparent;
+            }
           }
+        }
+
+        // 字段提示文字
+        .field-hint {
+          display: block;
+          margin-top: 4px;
+          font-size: 12px;
+          color: $text-placeholder;
         }
 
         .picker-wrapper {

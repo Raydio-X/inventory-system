@@ -386,6 +386,19 @@ class MySQLDataStore {
       // 插入订单明细
       for (const item of orderData.items) {
         const itemId = this.generateId('item-');
+
+        // 获取商品最新的成本价（从products表）
+        let latestCostPrice = item.costPrice || 0;
+        if (item.skuId) {
+          const [skuRows] = await connection.execute(
+            `SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = ?`,
+            [item.skuId]
+          );
+          if (skuRows.length > 0 && skuRows[0].cost_price > 0) {
+            latestCostPrice = Number(skuRows[0].cost_price);
+          }
+        }
+
         await connection.execute(
           `INSERT INTO sales_order_items 
            (id, order_id, sku_id, product_name, color, size, quantity, price, cost_price)
@@ -399,7 +412,7 @@ class MySQLDataStore {
             item.size,
             item.quantity,
             item.price,
-            item.costPrice
+            latestCostPrice
           ]
         );
 
@@ -488,6 +501,19 @@ class MySQLDataStore {
       // 插入新明细 + 扣减新库存
       for (const item of orderData.items) {
         const itemId = this.generateId('item-');
+
+        // 获取商品最新的成本价（从products表）
+        let latestCostPrice = item.costPrice || 0;
+        if (item.skuId) {
+          const [skuRows] = await connection.execute(
+            `SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = ?`,
+            [item.skuId]
+          );
+          if (skuRows.length > 0 && skuRows[0].cost_price > 0) {
+            latestCostPrice = Number(skuRows[0].cost_price);
+          }
+        }
+
         await connection.execute(
           `INSERT INTO sales_order_items
            (id, order_id, sku_id, product_name, color, size, quantity, price, cost_price)
@@ -501,7 +527,7 @@ class MySQLDataStore {
             item.size,
             item.quantity,
             item.price,
-            item.costPrice
+            latestCostPrice
           ]
         );
 
