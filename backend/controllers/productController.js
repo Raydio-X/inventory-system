@@ -155,14 +155,11 @@ const getProducts = async (req, res, next) => {
   try {
     const { keyword, category, status } = req.query;
 
-    // 默认不显示已删除的商品，除非明确指定 status=deleted
-    let sql = 'SELECT p.*, s.id AS sku_id, s.product_id, s.color, s.size, s.stock AS sku_stock, s.price AS sku_price, s.created_at AS sku_created_at, s.updated_at AS sku_updated_at FROM products p LEFT JOIN skus s ON p.id = s.product_id WHERE p.status != \'deleted\'';
+    // 硬删除后不再需要过滤已删除商品
+    let sql = 'SELECT p.*, s.id AS sku_id, s.product_id, s.color, s.size, s.stock AS sku_stock, s.price AS sku_price, s.created_at AS sku_created_at, s.updated_at AS sku_updated_at FROM products p LEFT JOIN skus s ON p.id = s.product_id WHERE 1=1';
     const params = [];
 
-    // 如果明确要查询已删除的商品
-    if (status === 'deleted') {
-      sql = sql.replace('p.status != \'deleted\'', 'p.status = \'deleted\'');
-    } else if (status) {
+    if (status) {
       sql += ' AND p.status = ?';
       params.push(status);
     }
@@ -398,7 +395,7 @@ const updateProduct = async (req, res, next) => {
 };
 
 /**
- * 删除商品（软删除），同时删除商品图片
+ * 删除商品（硬删除），同时删除商品图片和关联的SKU
  */
 const deleteProduct = async (req, res, next) => {
   try {
@@ -433,7 +430,11 @@ const deleteProduct = async (req, res, next) => {
       }
     }
 
-    await db.query("UPDATE products SET status = 'deleted' WHERE id = ?", [id]);
+    // 先删除关联的 SKU 记录
+    await db.query("DELETE FROM skus WHERE product_id = ?", [id]);
+    
+    // 然后硬删除商品记录
+    await db.query("DELETE FROM products WHERE id = ?", [id]);
 
     res.json({
       success: true,

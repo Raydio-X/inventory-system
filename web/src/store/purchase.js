@@ -82,6 +82,19 @@ export const usePurchaseStore = defineStore('purchase', () => {
     }
   }
 
+  // 撤回采购订单（仅限已入库状态）
+  const revokePurchaseOrder = async (id) => {
+    try {
+      const res = await api.post(`/purchases/${id}/revoke`)
+      if (res.success) {
+        await fetchPurchaseOrders()
+      }
+      return res
+    } catch (error) {
+      throw error
+    }
+  }
+
   // 初始化数据
   const initData = async () => {
     try {
@@ -99,6 +112,7 @@ export const usePurchaseStore = defineStore('purchase', () => {
     updatePurchaseOrder,
     confirmPurchase,
     deletePurchaseOrder,
+    revokePurchaseOrder,
     initData
   }
 })

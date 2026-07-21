@@ -217,6 +217,19 @@ export const useBillingStore = defineStore('billing', () => {
 
     const debtAmount = Math.round((cartTotal.value - paidAmount) * 100) / 100
 
+    // 优惠金额 = 原价总额 - 折后总额
+    const discountAmount = Math.round((cartTotalOriginal.value - cartTotal.value) * 100) / 100
+
+    // 根据付款状态确定订单状态
+    let orderStatus = 'settled'
+    if (paymentStatus.value === 'unpaid') {
+      orderStatus = 'unpaid'
+    } else if (paymentStatus.value === 'partial') {
+      orderStatus = 'partial'
+    } else if (paymentStatus.value === 'paid') {
+      orderStatus = 'paid'
+    }
+
     // 构造请求数据
     const orderPayload = {
       customerId: currentCustomer.value?.id || null,
@@ -233,9 +246,9 @@ export const useBillingStore = defineStore('billing', () => {
       totalAmount: cartTotal.value,
       paidAmount,
       debtAmount,
-      discount: orderDiscount.value,
+      discount: discountAmount,
       paymentMethod: 'cash',
-      status: debtAmount > 0 ? 'partial' : 'settled',
+      status: orderStatus,
       remark: ''
     }
 

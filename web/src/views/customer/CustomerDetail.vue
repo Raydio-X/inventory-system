@@ -277,7 +277,31 @@ const toggleOrder = (orderId) => {
 // 获取订单商品明细
 const getOrderItems = (order) => order.items || []
 
-// 按商品名称分组订单项
+// 尺码排序辅助函数
+const getSizeOrder = (size) => {
+  if (!size) return 999
+  const s = String(size).toUpperCase().trim()
+  // 常见尺码映射
+  const sizeMap = {
+    'XS': 1, 'XSMALL': 1,
+    'S': 2, 'SMALL': 2,
+    'M': 3, 'MEDIUM': 3,
+    'L': 4, 'LARGE': 4,
+    'XL': 5, 'X-LARGE': 5,
+    'XXL': 6, '2XL': 6, 'XX-LARGE': 6,
+    'XXXL': 7, '3XL': 7, 'XXX-LARGE': 7,
+    '4XL': 8, 'XXXXL': 8,
+    '5XL': 9
+  }
+  if (sizeMap[s] !== undefined) return sizeMap[s]
+  // 数字尺码（如 36, 38, 40 等）
+  const num = parseInt(s)
+  if (!isNaN(num)) return num
+  // 其他情况按字符串排序
+  return 999
+}
+
+// 按商品名称分组订单项，并按颜色+尺码排序
 const groupItemsByProduct = (items) => {
   if (!items || items.length === 0) return []
   const groups = {}
@@ -290,6 +314,19 @@ const groupItemsByProduct = (items) => {
       }
     }
     groups[name].items.push(item)
+  })
+  // 对每个分组内的规格进行排序：先按颜色，再按尺码升序
+  Object.values(groups).forEach(group => {
+    group.items.sort((a, b) => {
+      const colorA = (a.color || '').toString().trim()
+      const colorB = (b.color || '').toString().trim()
+      // 先按颜色排序
+      if (colorA !== colorB) {
+        return colorA.localeCompare(colorB, 'zh-CN')
+      }
+      // 同颜色按尺码升序
+      return getSizeOrder(a.size) - getSizeOrder(b.size)
+    })
   })
   return Object.values(groups)
 }
@@ -370,22 +407,27 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .customer-detail-page {
+  padding-top: calc(56px + #{$safe-area-top}); // 导航栏高度 + 安全区域
   padding-bottom: 80px;
 
-  // 导航栏
+  // 导航栏 - 固定置顶
   .nav-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
     background: linear-gradient(135deg, $primary-color, $primary-light);
     color: white;
     border-radius: 0 0 12px 12px;
-    width: calc(100% + 32px);
-    margin-left: -16px;
-    margin-right: -16px;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 
     .nav-content {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 12px 16px;
+      padding-top: calc(12px + #{$safe-area-top});
     }
 
     .nav-back {

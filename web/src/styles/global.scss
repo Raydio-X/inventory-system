@@ -27,6 +27,23 @@ html, body {
   padding-top: calc(44px + $safe-area-top + $spacing-lg);
 }
 
+// 固定导航栏通用样式
+.fixed-nav-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+// 渐变色导航栏
+.gradient-nav-bar {
+  background: linear-gradient(135deg, $primary-color, $primary-light);
+  color: white;
+  border-radius: 0 0 12px 12px;
+}
+
 // 卡片样式
 .card {
   background: $bg-card;

@@ -88,7 +88,17 @@ router.put('/:id/confirm',
 );
 
 /**
- * 删除采购订单
+ * 撤回采购订单（仅限已入库状态）
+ * POST /api/purchases/:id/revoke
+ */
+router.post('/:id/revoke',
+  [param('id').notEmpty().withMessage('采购订单ID不能为空')],
+  validate,
+  purchaseController.revokePurchaseOrder
+);
+
+/**
+ * 删除采购订单（仅限待入库状态）
  * DELETE /api/purchases/:id
  */
 router.delete('/:id',

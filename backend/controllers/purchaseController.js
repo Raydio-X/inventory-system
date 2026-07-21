@@ -226,25 +226,10 @@ const createPurchaseOrder = async (req, res, next) => {
         );
       }
 
-      // 如果是新商品入库，执行入库操作
+      // 如果是新商品入库，只更新成本价，不更新库存（库存已在创建商品时写入）
       if (isNewProduct) {
         for (const item of items) {
           if (!item.skuId) continue;
-
-          // 获取当前SKU信息
-          const [skuRows] = await connection.execute(
-            'SELECT stock FROM skus WHERE id = ?',
-            [item.skuId]
-          );
-          const currentSku = skuRows[0];
-
-          if (!currentSku) continue;
-
-          // 更新SKU库存
-          await connection.execute(
-            'UPDATE skus SET stock = stock + ? WHERE id = ?',
-            [item.quantity, item.skuId]
-          );
 
           // 新商品入库：直接设置商品成本价为采购成本价
           if (item.costPrice > 0) {
@@ -254,12 +239,12 @@ const createPurchaseOrder = async (req, res, next) => {
             );
           }
 
-          // 记录库存流水
+          // 记录库存流水（记录采购信息，但不改变库存）
           const logId = `inv-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
           await connection.execute(
             `INSERT INTO inventory_logs (id, sku_id, type, quantity, order_id, order_no, remark)
              VALUES (?, ?, 'purchase_in', ?, ?, ?, ?)`,
-            [logId, item.skuId, item.quantity, orderId, orderNo, '新商品入库']
+            [logId, item.skuId, item.quantity, orderId, orderNo, '新商品入库成本记录']
           );
         }
 
@@ -268,7 +253,7 @@ const createPurchaseOrder = async (req, res, next) => {
         await connection.execute(
           `INSERT INTO account_records (id, type, category, amount, order_id, order_no, remark)
            VALUES (?, 'expense', 'purchase', ?, ?, ?, ?)`,
-          [accId, totalAmount, orderId, orderNo, `新商品入库 - ${supplierName || '供应商'}`]
+          [accId, totalAmount, orderId, orderNo, `新商品入库成本 - ${supplierName || '供应商'}`]
         );
       }
     });
@@ -495,8 +480,81 @@ const updatePurchaseOrder = async (req, res, next) => {
 };
 
 /**
- * 删除采购订单
- * 注意：删除已入库的订单不会影响实际库存数量，仅删除记录
+ * 撤回采购订单（仅限已入库状态）
+ * 库存不回滚，但成本回滚，订单删除
+ */
+const revokePurchaseOrder = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const [existing] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    if (!existing) {
+      throw new NotFoundError('采购订单不存在');
+    }
+
+    // 只有已入库的订单可以撤回
+    if (existing.status !== 'completed') {
+      throw new ValidationError('只有已入库的采购订单才能撤回');
+    }
+
+    // 获取采购订单明细
+    const [items] = await db.query(
+      'SELECT * FROM purchase_order_items WHERE order_id = ?',
+      [id]
+    );
+
+    await db.transaction(async (connection) => {
+      // 回滚成本
+      for (const item of items) {
+        // 获取该商品的所有采购订单（排除当前要撤回的订单）
+        const [otherOrders] = await connection.execute(
+          `SELECT poi.quantity, poi.cost_price
+           FROM purchase_order_items poi
+           JOIN purchase_orders po ON poi.order_id = po.id
+           WHERE poi.product_id = ? AND po.status = 'completed' AND po.id != ?`,
+          [item.product_id, id]
+        );
+
+        if (otherOrders.length === 0) {
+          // 没有其他采购订单，成本重置为 0
+          await connection.execute(
+            'UPDATE products SET cost_price = 0 WHERE id = ?',
+            [item.product_id]
+          );
+        } else {
+          // 重新计算移动加权平均成本
+          let totalQuantity = 0;
+          let totalCost = 0;
+          for (const order of otherOrders) {
+            totalQuantity += Number(order.quantity);
+            totalCost += Number(order.quantity) * Number(order.cost_price);
+          }
+          const newCostPrice = totalQuantity > 0 ? Math.round((totalCost / totalQuantity) * 100) / 100 : 0;
+          
+          await connection.execute(
+            'UPDATE products SET cost_price = ? WHERE id = ?',
+            [newCostPrice, item.product_id]
+          );
+        }
+      }
+
+      // 删除采购订单明细
+      await connection.execute('DELETE FROM purchase_order_items WHERE order_id = ?', [id]);
+      // 删除采购订单
+      await connection.execute('DELETE FROM purchase_orders WHERE id = ?', [id]);
+    });
+
+    res.json({
+      success: true,
+      message: '采购订单已撤回'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 删除采购订单（仅限待入库状态）
  */
 const deletePurchaseOrder = async (req, res, next) => {
   try {
@@ -507,12 +565,16 @@ const deletePurchaseOrder = async (req, res, next) => {
       throw new NotFoundError('采购订单不存在');
     }
 
+    // 只有待入库的订单可以删除
+    if (existing.status === 'completed') {
+      throw new ValidationError('已入库的采购订单请使用撤回功能');
+    }
+
     await db.transaction(async (connection) => {
       // 删除采购订单明细
       await connection.execute('DELETE FROM purchase_order_items WHERE order_id = ?', [id]);
       // 删除采购订单
       await connection.execute('DELETE FROM purchase_orders WHERE id = ?', [id]);
-      // 注意：不回退库存，仅删除记录
     });
 
     res.json({
@@ -530,5 +592,6 @@ module.exports = {
   createPurchaseOrder,
   updatePurchaseOrder,
   confirmPurchase,
-  deletePurchaseOrder
+  deletePurchaseOrder,
+  revokePurchaseOrder
 };

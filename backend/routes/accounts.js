@@ -36,6 +36,12 @@ router.get('/statistics',
 router.get('/today', accountController.getTodayStatistics);
 
 /**
+ * 获取商品利润详情（全部历史数据）
+ * GET /api/accounts/profit-detail
+ */
+router.get('/profit-detail', accountController.getProfitDetail);
+
+/**
  * 获取账目记录列表
  * GET /api/accounts/records
  */

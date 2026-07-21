@@ -138,20 +138,6 @@
               <div class="full-btn" @click="receiveAmount = selectedOrder.debtAmount">全额</div>
             </div>
           </div>
-          <div class="form-section">
-            <div class="form-label">收款方式</div>
-            <div class="method-options">
-              <div
-                v-for="method in paymentMethods"
-                :key="method.value"
-                :class="['method-item', { active: selectedMethod === method.value }]"
-                @click="selectedMethod = method.value"
-              >
-                <t-icon :name="method.icon" class="method-icon" />
-                <span>{{ method.label }}</span>
-              </div>
-            </div>
-          </div>
         </div>
         <div class="popup-footer">
           <div class="footer-cancel" @click="showReceive = false">取消</div>
@@ -200,14 +186,11 @@ const debtOrders = computed(() => {
   }))
 })
 
-const totalDebt = computed(() =>
-  debtOrders.value.reduce((sum, o) => sum + o.debtAmount, 0)
-)
+const totalDebt = computed(() => detailData.value?.totalDebt || 0)
 
 const showReceive = ref(false)
 const selectedOrder = ref(null)
 const receiveAmount = ref(0)
-const selectedMethod = ref('cash')
 
 // 展开状态
 const expandedOrders = ref({})
@@ -220,13 +203,6 @@ const toggleOrder = (orderId) => {
 const getOrderItems = (debtOrder) => {
   return debtOrder.items || []
 }
-
-const paymentMethods = [
-  { value: 'cash', label: '现金', icon: 'money-circle' },
-  { value: 'wechat', label: '微信', icon: 'chat' },
-  { value: 'alipay', label: '支付宝', icon: 'logo-alipay' },
-  { value: 'transfer', label: '转账', icon: 'swap' }
-]
 
 const canReceive = computed(() =>
   selectedOrder.value && receiveAmount.value > 0 && receiveAmount.value <= selectedOrder.value.debtAmount
@@ -249,7 +225,6 @@ const formatDate = (date) => {
 const showReceivePopup = (order) => {
   selectedOrder.value = order
   receiveAmount.value = order.debtAmount
-  selectedMethod.value = 'cash'
   showReceive.value = true
 }
 
@@ -260,7 +235,7 @@ const confirmReceive = async () => {
     await debtStore.recordPayment(customerId, {
       orderId: selectedOrder.value.orderId || selectedOrder.value.id,
       amount: receiveAmount.value,
-      paymentMethod: selectedMethod.value
+      paymentMethod: 'cash'
     })
     MessagePlugin.success('收款成功')
     showReceive.value = false
@@ -280,14 +255,16 @@ onMounted(async () => {
 .debt-detail-page {
   min-height: 100%;
   background: $bg-page;
+  padding-top: calc(56px + $safe-area-top);
 
   // ========== 导航栏 ==========
   .nav-bar {
-    background: linear-gradient(135deg, $primary-color, $primary-dark);
-    padding-top: $safe-area-top;
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 100;
+    background: linear-gradient(135deg, $primary-color, $primary-dark);
     width: calc(100% + 32px);
     margin-left: -16px;
     margin-right: -16px;
@@ -297,7 +274,7 @@ onMounted(async () => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      padding: calc(12px + $safe-area-top) 16px;
       height: 48px;
       box-sizing: border-box;
     }
@@ -699,34 +676,6 @@ onMounted(async () => {
             cursor: pointer;
             flex-shrink: 0;
             &:active { opacity: 0.85; }
-          }
-        }
-
-        .method-options {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-
-          .method-item {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            padding: 6px 12px;
-            border: 1px solid $border-color;
-            border-radius: 6px;
-            font-size: 12px;
-            color: $text-secondary;
-            cursor: pointer;
-
-            .method-icon { font-size: 14px; }
-
-            &:active { background: $bg-hover; }
-
-            &.active {
-              border-color: $primary-color;
-              color: $primary-color;
-              background: rgba($primary-color, 0.05);
-            }
           }
         }
       }

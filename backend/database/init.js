@@ -163,7 +163,7 @@ const TABLE_DEFINITIONS = [
       CREATE TABLE IF NOT EXISTS sales_order_items (
         id VARCHAR(50) PRIMARY KEY,
         order_id VARCHAR(50) NOT NULL,
-        sku_id VARCHAR(50) NOT NULL,
+        sku_id VARCHAR(50),
         product_name VARCHAR(200) NOT NULL,
         color VARCHAR(50) NOT NULL,
         size VARCHAR(50) NOT NULL,
@@ -171,8 +171,7 @@ const TABLE_DEFINITIONS = [
         price DECIMAL(10, 2) NOT NULL,
         cost_price DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
-        FOREIGN KEY (sku_id) REFERENCES skus(id)
+        FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     indexes: [
       'CREATE INDEX IF NOT EXISTS idx_sales_order_items_order_id ON sales_order_items(order_id)',
@@ -208,15 +207,14 @@ const TABLE_DEFINITIONS = [
       CREATE TABLE IF NOT EXISTS return_order_items (
         id VARCHAR(50) PRIMARY KEY,
         order_id VARCHAR(50) NOT NULL,
-        sku_id VARCHAR(50) NOT NULL,
+        sku_id VARCHAR(50),
         product_name VARCHAR(200) NOT NULL,
         color VARCHAR(50) NOT NULL,
         size VARCHAR(50) NOT NULL,
         quantity INT NOT NULL,
         price DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (order_id) REFERENCES return_orders(id) ON DELETE CASCADE,
-        FOREIGN KEY (sku_id) REFERENCES skus(id)
+        FOREIGN KEY (order_id) REFERENCES return_orders(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     indexes: [
       'CREATE INDEX IF NOT EXISTS idx_return_order_items_order_id ON return_order_items(order_id)',
@@ -268,7 +266,7 @@ const TABLE_DEFINITIONS = [
       CREATE TABLE IF NOT EXISTS purchase_order_items (
         id VARCHAR(50) PRIMARY KEY,
         order_id VARCHAR(50) NOT NULL,
-        product_id VARCHAR(50) NOT NULL,
+        product_id VARCHAR(50),
         sku_id VARCHAR(50),
         product_name VARCHAR(200) NOT NULL,
         color VARCHAR(50),
@@ -277,9 +275,7 @@ const TABLE_DEFINITIONS = [
         cost_price DECIMAL(10, 2) NOT NULL,
         total_price DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
-        FOREIGN KEY (product_id) REFERENCES products(id),
-        FOREIGN KEY (sku_id) REFERENCES skus(id)
+        FOREIGN KEY (order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     indexes: [
       'CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order_id ON purchase_order_items(order_id)',
@@ -557,9 +553,7 @@ async function checkAndMigrateSchema(connection) {
 
     if (phoneColumns.length > 0 && phoneColumns[0].IS_NULLABLE === 'NO') {
       log.info('  检测到 customers.phone 为 NOT NULL，正在迁移为允许 NULL...');
-      // 先将空字符串转为 NULL
-      await connection.query("UPDATE customers SET phone = NULL WHERE phone = ''");
-      // 删除旧的唯一约束
+      // 先删除旧的唯一约束
       try {
         await connection.query('ALTER TABLE customers DROP INDEX phone');
       } catch (dropErr) {
@@ -570,6 +564,8 @@ async function checkAndMigrateSchema(connection) {
         ALTER TABLE customers 
         MODIFY COLUMN phone VARCHAR(20) DEFAULT NULL
       `);
+      // 将空字符串转为 NULL
+      await connection.query("UPDATE customers SET phone = NULL WHERE phone = ''");
       log.success('  customers 表 phone 字段迁移完成');
     }
 
@@ -662,6 +658,68 @@ async function checkAndMigrateSchema(connection) {
       }
       log.success('  已有采购订单 supplier_id 回填完成');
     }
+
+    // 删除订单明细表的外键约束（支持商品硬删除）
+    log.info('  正在检查并删除订单明细表的外键约束...');
+    
+    // 删除 sales_order_items 的 sku_id 外键
+    try {
+      const [salesFks] = await connection.query(`
+        SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE 
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'sales_order_items' 
+        AND COLUMN_NAME = 'sku_id' AND REFERENCED_TABLE_NAME IS NOT NULL
+      `, [DB_CONFIG.database]);
+      
+      for (const fk of salesFks) {
+        await connection.query(`ALTER TABLE sales_order_items DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+        log.success(`  已删除 sales_order_items.${fk.CONSTRAINT_NAME} 外键`);
+      }
+    } catch (err) {
+      log.warn(`  sales_order_items 外键检查跳过: ${err.message}`);
+    }
+    
+    // 修改 sales_order_items.sku_id 允许 NULL
+    await connection.query(`ALTER TABLE sales_order_items MODIFY COLUMN sku_id VARCHAR(50) NULL`);
+    
+    // 删除 return_order_items 的 sku_id 外键
+    try {
+      const [returnFks] = await connection.query(`
+        SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE 
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'return_order_items' 
+        AND COLUMN_NAME = 'sku_id' AND REFERENCED_TABLE_NAME IS NOT NULL
+      `, [DB_CONFIG.database]);
+      
+      for (const fk of returnFks) {
+        await connection.query(`ALTER TABLE return_order_items DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+        log.success(`  已删除 return_order_items.${fk.CONSTRAINT_NAME} 外键`);
+      }
+    } catch (err) {
+      log.warn(`  return_order_items 外键检查跳过: ${err.message}`);
+    }
+    
+    // 修改 return_order_items.sku_id 允许 NULL
+    await connection.query(`ALTER TABLE return_order_items MODIFY COLUMN sku_id VARCHAR(50) NULL`);
+    
+    // 删除 purchase_order_items 的外键
+    try {
+      const [purchaseFks] = await connection.query(`
+        SELECT CONSTRAINT_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE 
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'purchase_order_items' 
+        AND COLUMN_NAME IN ('product_id', 'sku_id') AND REFERENCED_TABLE_NAME IS NOT NULL
+      `, [DB_CONFIG.database]);
+      
+      for (const fk of purchaseFks) {
+        await connection.query(`ALTER TABLE purchase_order_items DROP FOREIGN KEY ${fk.CONSTRAINT_NAME}`);
+        log.success(`  已删除 purchase_order_items.${fk.CONSTRAINT_NAME} 外键`);
+      }
+    } catch (err) {
+      log.warn(`  purchase_order_items 外键检查跳过: ${err.message}`);
+    }
+    
+    // 修改 purchase_order_items.product_id 和 sku_id 允许 NULL
+    await connection.query(`ALTER TABLE purchase_order_items MODIFY COLUMN product_id VARCHAR(50) NULL, MODIFY COLUMN sku_id VARCHAR(50) NULL`);
+    
+    log.success('  订单明细表外键约束处理完成');
 
     log.success('表结构兼容性检查完成');
   } catch (err) {

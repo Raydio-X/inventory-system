@@ -29,9 +29,12 @@
 
       <!-- 核心指标 -->
       <div class="stats-cards">
-        <div class="stats-item primary">
+        <div class="stats-item primary" @click="goToProfitDetail">
           <div class="stats-item-value">¥{{ formatStatAmount(statsData.profit) }}</div>
           <div class="stats-item-label">利润金额</div>
+          <div class="stats-item-arrow">
+            <t-icon name="chevron-right" />
+          </div>
         </div>
         <div class="stats-item">
           <div class="stats-item-value">{{ statsData.salesCount }}</div>
@@ -74,8 +77,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import Navbar from '@/components/Navbar.vue'
 import api from '@/utils/api'
+
+const router = useRouter()
 
 // 数据统计 - 时间维度
 const statsTimeDim = ref('month')
@@ -108,6 +114,11 @@ const switchPeriod = (period) => {
 const shiftTime = (dir) => {
   statsTimeOffset.value += dir
   fetchStatistics()
+}
+
+// 跳转到利润详情
+const goToProfitDetail = () => {
+  router.push('/accounts/profit')
 }
 
 // 从后端获取统计数据
@@ -275,10 +286,24 @@ onMounted(() => {
 
         &.primary {
           background: linear-gradient(135deg, $primary-color, $primary-light);
+          cursor: pointer;
+          position: relative;
 
           .stats-item-value,
           .stats-item-label {
             color: white;
+          }
+
+          .stats-item-arrow {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(255, 255, 255, 0.8);
+          }
+
+          &:active {
+            opacity: 0.9;
           }
         }
       }

@@ -239,7 +239,7 @@ const submitEdit = async () => {
       paidAmount: editForm.value.paidAmount,
       debtAmount: debt,
       discount: order.value.discount || 0,
-      status: debt > 0 ? 'partial' : 'settled',
+      status: editForm.value.paidAmount <= 0 ? 'unpaid' : (debt > 0 ? 'partial' : 'paid'),
       remark: editForm.value.remark
     })
     MessagePlugin.success('订单修改成功')
@@ -259,10 +259,16 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .order-edit-page {
+  padding-top: calc(56px + $safe-area-top);
   padding-bottom: 80px;
 
   // 导航栏
   .nav-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
     background: linear-gradient(135deg, $primary-color, $primary-light);
     color: white;
     border-radius: 0 0 12px 12px;
@@ -274,7 +280,7 @@ onMounted(() => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      padding: calc(12px + $safe-area-top) 16px 12px 16px;
     }
 
     .nav-back {

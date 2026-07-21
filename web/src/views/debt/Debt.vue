@@ -332,14 +332,17 @@ onMounted(() => {
 .debt-page {
   min-height: 100%;
   background: $bg-page;
+  padding-top: calc(56px + $safe-area-top);
 
   // ========== 导航栏 ==========
   .nav-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
     background: linear-gradient(135deg, $primary-color, $primary-dark);
     padding-top: $safe-area-top;
-    position: sticky;
-    top: 0;
-    z-index: 100;
     width: calc(100% + 32px);
     margin-left: -16px;
     margin-right: -16px;
@@ -350,6 +353,7 @@ onMounted(() => {
       align-items: center;
       justify-content: space-between;
       padding: 12px 16px;
+      padding-top: calc(12px + $safe-area-top);
       height: 48px;
       box-sizing: border-box;
     }

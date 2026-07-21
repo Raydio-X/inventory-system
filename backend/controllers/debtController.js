@@ -11,20 +11,21 @@ const getDebtCustomers = async (req, res, next) => {
   try {
     const { keyword } = req.query;
     
-    // 获取所有有欠款的客户
+    // 从 customers 表获取有欠款的客户（使用 total_debt 字段）
     const query = `
       SELECT 
-        so.customer_id AS customerId,
-        so.customer_name AS customerName,
+        c.id AS customerId,
+        c.name AS customerName,
         c.phone AS customerPhone,
-        SUM(so.debt_amount) AS totalDebt,
-        COUNT(*) AS orderCount,
-        MIN(so.created_at) AS oldestOrderDate
-      FROM sales_orders so
-      LEFT JOIN customers c ON so.customer_id = c.id
-      WHERE so.debt_amount > 0
-      GROUP BY so.customer_id, so.customer_name, c.phone
-      ORDER BY totalDebt DESC
+        c.total_debt AS totalDebt,
+        (
+          SELECT COUNT(*) 
+          FROM sales_orders so 
+          WHERE so.customer_id = c.id AND so.debt_amount > 0
+        ) AS orderCount
+      FROM customers c
+      WHERE c.total_debt > 0
+      ORDER BY c.total_debt DESC
     `;
     
     let debtCustomers = await dataStore.query(query);
@@ -55,9 +56,9 @@ const getDebtCustomerDetail = async (req, res, next) => {
   try {
     const { customerId } = req.params;
     
-    // 获取客户信息
+    // 获取客户信息（包含 total_debt）
     const customers = await dataStore.query(
-      'SELECT id, name, phone FROM customers WHERE id = ?',
+      'SELECT id, name, phone, total_debt FROM customers WHERE id = ?',
       [customerId]
     );
     
@@ -76,18 +77,6 @@ const getDebtCustomerDetail = async (req, res, next) => {
       [customerId]
     );
     
-    if (orders.length === 0) {
-      return res.json({
-        success: true,
-        data: {
-          customer: { id: customer.id, name: customer.name, phone: customer.phone },
-          orders: [],
-          totalDebt: 0,
-          orderCount: 0
-        }
-      });
-    }
-    
     // 获取每个订单的商品明细
     for (const order of orders) {
       const items = await dataStore.query(
@@ -99,12 +88,17 @@ const getDebtCustomerDetail = async (req, res, next) => {
       order.items = items;
     }
     
-    const totalDebt = orders.reduce((sum, o) => sum + Number(o.debt_amount), 0);
+    // 使用 customers 表的 total_debt 字段
+    const totalDebt = Number(customer.total_debt) || 0;
     
     res.json({
       success: true,
       data: {
-        customer: { id: customer.id, name: customer.name, phone: customer.phone },
+        customer: { 
+          id: customer.id, 
+          name: customer.name, 
+          phone: customer.phone 
+        },
         orders,
         totalDebt,
         orderCount: orders.length

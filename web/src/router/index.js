@@ -116,6 +116,12 @@ const routes = [
     meta: { title: '数据统计' }
   },
   {
+    path: '/accounts/profit',
+    name: 'ProfitDetail',
+    component: () => import('@/views/account/ProfitDetail.vue'),
+    meta: { title: '利润详情', hideTabBar: true }
+  },
+  {
     path: '/accounts/record',
     name: 'AccountRecord',
     component: () => import('@/views/record/Record.vue'),

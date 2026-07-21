@@ -155,7 +155,7 @@ const createSalesOrder = async (req, res, next) => {
       debtAmount: debtAmount || 0,
       discount: discount || 0,
       paymentMethod: paymentMethod || 'cash',
-      status: status || (debtAmount > 0 ? 'partial' : 'settled'),
+      status: status || 'settled',
       remark: remark || '',
       items: items.map(item => ({
         skuId: item.skuId,
@@ -338,7 +338,7 @@ const updateSalesOrder = async (req, res, next) => {
       paidAmount: paidAmount || 0,
       debtAmount: debtAmount || 0,
       discount: discount || 0,
-      status: status || (debtAmount > 0 ? 'partial' : 'settled'),
+      status: status || 'settled',
       remark: remark || '',
       items: items.map(item => ({
         skuId: item.skuId,

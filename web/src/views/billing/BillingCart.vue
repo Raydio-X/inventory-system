@@ -450,6 +450,26 @@ const roundOff = ref(0)
 // 部分付款输入
 const paidInput = ref(0)
 
+// 从 store 同步初始值（解决 localStorage 恢复后的数据不同步问题）
+watch(() => billingStore.orderDiscount, (val) => {
+  const percent = Math.round(val * 100)
+  if (discountPercent.value !== percent) {
+    discountPercent.value = percent
+  }
+}, { immediate: true })
+
+watch(() => billingStore.roundOffAmount, (val) => {
+  if (roundOff.value !== val) {
+    roundOff.value = val
+  }
+}, { immediate: true })
+
+watch(() => billingStore.partialPaidAmount, (val) => {
+  if (paidInput.value !== val) {
+    paidInput.value = val
+  }
+}, { immediate: true })
+
 // 客户欠款
 const customerTotalDebt = computed(() => {
   if (!currentCustomer.value?.id) return 0
@@ -503,6 +523,10 @@ watch(roundOff, (val) => {
 const changePaymentStatus = (status) => {
   if (status === 'partial') {
     paidInput.value = 0
+  } else {
+    // 切换到 'unpaid' 或 'paid' 时，清零部分付款输入
+    paidInput.value = 0
+    billingStore.setPartialPaidAmount(0)
   }
   billingStore.setPaymentStatus(status)
 }
@@ -650,15 +674,17 @@ const goBack = () => {
 .cart-page {
   min-height: 100%;
   background: $bg-page;
+  padding-top: calc(56px + #{$safe-area-top});
   padding-bottom: 140px;
 
   // ========== 导航栏 ==========
   .nav-bar {
-    background: linear-gradient(135deg, $primary-color, $primary-dark);
-    padding-top: $safe-area-top;
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 100;
+    background: linear-gradient(135deg, $primary-color, $primary-dark);
     width: calc(100% + 32px);
     margin-left: -16px;
     margin-right: -16px;
@@ -668,7 +694,7 @@ const goBack = () => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      padding: calc(12px + #{$safe-area-top}) 16px 12px;
       height: 48px;
       box-sizing: border-box;
     }

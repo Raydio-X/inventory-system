@@ -26,7 +26,7 @@ const validate = (req, res, next) => {
 router.get('/orders', 
   [
     query('customerId').optional().isString(),
-    query('status').optional().isIn(['partial', 'settled', 'overdue']),
+    query('status').optional().isIn(['unpaid', 'partial', 'paid', 'settled', 'overdue']),
     query('startDate').optional().isISO8601(),
     query('endDate').optional().isISO8601()
   ],
@@ -61,7 +61,7 @@ router.post('/orders',
     body('debtAmount').optional().isFloat({ min: 0 }),
     body('discount').optional().isFloat({ min: 0 }),
     body('paymentMethod').optional().isIn(['cash', 'wechat', 'alipay', 'card']),
-    body('status').optional().isIn(['partial', 'settled']),
+    body('status').optional().isIn(['unpaid', 'partial', 'paid', 'settled']),
     body('remark').optional().isString()
   ],
   validate,
@@ -97,7 +97,7 @@ router.put('/orders/:id',
     body('paidAmount').optional().isFloat({ min: 0 }),
     body('debtAmount').optional().isFloat({ min: 0 }),
     body('discount').optional().isFloat({ min: 0 }),
-    body('status').optional().isIn(['partial', 'settled']),
+    body('status').optional().isIn(['unpaid', 'partial', 'paid', 'settled']),
     body('remark').optional().isString()
   ],
   validate,

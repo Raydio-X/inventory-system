@@ -158,7 +158,7 @@ const filteredCustomers = computed(() => {
   const keyword = searchKeyword.value.toLowerCase()
   return customerStore.customers.filter(c =>
     c.name.toLowerCase().includes(keyword) ||
-    c.phone.includes(keyword)
+    (c.phone && c.phone.includes(keyword))
   )
 })
 

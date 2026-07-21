@@ -445,9 +445,9 @@ class MySQLDataStore {
       if (orderData.customerId) {
         await connection.execute(
           `UPDATE customers 
-           SET total_spent = total_spent + ?, order_count = order_count + 1 
+           SET total_spent = total_spent + ?, order_count = order_count + 1, total_debt = total_debt + ?
            WHERE id = ?`,
-          [orderData.totalAmount, orderData.customerId]
+          [orderData.totalAmount, orderData.debtAmount || 0, orderData.customerId]
         );
       }
     });
@@ -556,7 +556,7 @@ class MySQLDataStore {
           orderData.paidAmount || 0,
           orderData.debtAmount || 0,
           orderData.discount || 0,
-          orderData.status || (orderData.debtAmount > 0 ? 'partial' : 'settled'),
+          orderData.status || 'settled',
           orderData.remark || '',
           id
         ]
@@ -564,9 +564,11 @@ class MySQLDataStore {
 
       // 更新客户统计：回滚旧的 + 加上新的
       if (oldOrder.customer_id) {
+        const oldDebt = Number(oldOrder.debt_amount) || 0;
+        const newDebt = Number(orderData.debtAmount) || 0;
         await connection.execute(
-          `UPDATE customers SET total_spent = total_spent - ? + ? WHERE id = ?`,
-          [oldOrder.total_amount, orderData.totalAmount, oldOrder.customer_id]
+          `UPDATE customers SET total_spent = total_spent - ? + ?, total_debt = total_debt - ? + ? WHERE id = ?`,
+          [oldOrder.total_amount, orderData.totalAmount, oldDebt, newDebt, oldOrder.customer_id]
         );
       }
     });
@@ -632,8 +634,8 @@ class MySQLDataStore {
       // 更新客户统计
       if (order.customer_id) {
         await connection.execute(
-          `UPDATE customers SET total_spent = total_spent - ?, order_count = order_count - 1 WHERE id = ?`,
-          [order.total_amount, order.customer_id]
+          `UPDATE customers SET total_spent = total_spent - ?, order_count = order_count - 1, total_debt = total_debt - ? WHERE id = ?`,
+          [order.total_amount, Number(order.debt_amount) || 0, order.customer_id]
         );
       }
     });
@@ -655,8 +657,8 @@ class MySQLDataStore {
       }
 
       const currentOrder = order[0];
-      const newPaidAmount = currentOrder.paid_amount + paidAmount;
-      const newDebtAmount = currentOrder.debt_amount - paidAmount;
+      const newPaidAmount = Number(currentOrder.paid_amount) + Number(paidAmount);
+      const newDebtAmount = Number(currentOrder.debt_amount) - Number(paidAmount);
       const newStatus = newDebtAmount <= 0 ? 'settled' : 'partial';
 
       // 更新订单
@@ -666,6 +668,14 @@ class MySQLDataStore {
          WHERE id = ?`,
         [newPaidAmount, Math.max(0, newDebtAmount), newStatus, id]
       );
+
+      // 更新客户欠款统计
+      if (currentOrder.customer_id) {
+        await connection.execute(
+          `UPDATE customers SET total_debt = total_debt - ? WHERE id = ?`,
+          [Number(paidAmount), currentOrder.customer_id]
+        );
+      }
 
       // 记录账目
       const accId = this.generateId('acc-');

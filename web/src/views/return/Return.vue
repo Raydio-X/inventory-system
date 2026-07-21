@@ -553,15 +553,18 @@ onMounted(() => {
 .return-page {
   min-height: 100%;
   background: $bg-page;
+  padding-top: calc(56px + $safe-area-top);
   padding-bottom: 120px;
 
   // 导航栏 - 负margin抵消.page的左右padding实现全屏宽度
   .nav-bar {
     background: linear-gradient(135deg, $primary-color, $primary-dark);
-    padding-top: $safe-area-top;
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 100;
+    padding-top: $safe-area-top;
     width: calc(100% + 32px);
     margin-left: -16px;
     margin-right: -16px;
@@ -571,7 +574,7 @@ onMounted(() => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      padding: calc(12px + $safe-area-top) 16px 12px;
     }
 
     .nav-back {

@@ -160,7 +160,7 @@
 
                 <!-- 操作按钮 -->
                 <div class="order-actions">
-                  <!-- 待入库状态：显示确认入库、修改、删除 -->
+                  <!-- 待入库状态：显示确认入库、修改 -->
                   <template v-if="order.status === 'pending'">
                     <t-button theme="success" size="small" @click="openConfirmDialog(order)">
                       <template #icon><t-icon name="check" /></template>
@@ -170,12 +170,18 @@
                       <template #icon><t-icon name="edit" /></template>
                       修改
                     </t-button>
+                    <t-button theme="danger" size="small" variant="outline" @click="openDeleteDialog(order)">
+                      <template #icon><t-icon name="delete" /></template>
+                      删除
+                    </t-button>
                   </template>
-                  <!-- 所有状态都可以删除 -->
-                  <t-button theme="danger" size="small" variant="outline" @click="openDeleteDialog(order)">
-                    <template #icon><t-icon name="delete" /></template>
-                    删除
-                  </t-button>
+                  <!-- 已入库状态：显示撤回 -->
+                  <template v-else-if="order.status === 'completed'">
+                    <t-button theme="danger" size="small" variant="outline" @click="openRevokeDialog(order)">
+                      <template #icon><t-icon name="rollback" /></template>
+                      撤回
+                    </t-button>
+                  </template>
                 </div>
               </div>
             </transition>
@@ -207,10 +213,34 @@
           <t-icon name="error-circle" class="delete-icon" />
         </div>
         <p class="delete-title">确定要删除此采购订单吗？</p>
-        <p class="delete-hint">删除后无法恢复，但不会影响商品库存</p>
+        <p class="delete-hint">删除后无法恢复</p>
         <div class="delete-actions">
           <t-button theme="default" size="large" @click="deleteDialogVisible = false">取消</t-button>
           <t-button theme="danger" size="large" :loading="deleting" @click="confirmDeleteOrder">确认删除</t-button>
+        </div>
+      </div>
+    </t-dialog>
+
+    <!-- 撤回确认弹窗 -->
+    <t-dialog
+      v-model:visible="revokeDialogVisible"
+      header="确认撤回"
+      :footer="false"
+      :closeBtn="false"
+      placement="center"
+      :attach="false"
+      width="400px"
+      class="delete-dialog"
+    >
+      <div class="delete-dialog-content">
+        <div class="delete-icon-wrapper">
+          <t-icon name="rollback" class="delete-icon" style="color: #e34d59;" />
+        </div>
+        <p class="delete-title">确定要撤回此采购订单吗？</p>
+        <p class="delete-hint">撤回后订单将删除，商品库存不变，成本将回滚</p>
+        <div class="delete-actions">
+          <t-button theme="default" size="large" @click="revokeDialogVisible = false">取消</t-button>
+          <t-button theme="danger" size="large" :loading="revoking" @click="confirmRevokeOrder">确认撤回</t-button>
         </div>
       </div>
     </t-dialog>
@@ -280,7 +310,31 @@ const toggleOrder = (orderId) => {
   expandedOrders.value[orderId] = !expandedOrders.value[orderId]
 }
 
-// 按商品名称分组订单项
+// 尺码排序辅助函数
+const getSizeOrder = (size) => {
+  if (!size) return 999
+  const s = String(size).toUpperCase().trim()
+  // 常见尺码映射
+  const sizeMap = {
+    'XS': 1, 'XSMALL': 1,
+    'S': 2, 'SMALL': 2,
+    'M': 3, 'MEDIUM': 3,
+    'L': 4, 'LARGE': 4,
+    'XL': 5, 'X-LARGE': 5,
+    'XXL': 6, '2XL': 6, 'XX-LARGE': 6,
+    'XXXL': 7, '3XL': 7, 'XXX-LARGE': 7,
+    '4XL': 8, 'XXXXL': 8,
+    '5XL': 9
+  }
+  if (sizeMap[s] !== undefined) return sizeMap[s]
+  // 数字尺码（如 36, 38, 40 等）
+  const num = parseInt(s)
+  if (!isNaN(num)) return num
+  // 其他情况按字符串排序
+  return 999
+}
+
+// 按商品名称分组订单项，并按颜色+尺码排序
 const groupItemsByProduct = (items) => {
   if (!items || items.length === 0) return []
   const groups = {}
@@ -294,13 +348,31 @@ const groupItemsByProduct = (items) => {
     }
     groups[name].items.push(item)
   })
+  // 对每个分组内的规格进行排序：先按颜色，再按尺码升序
+  Object.values(groups).forEach(group => {
+    group.items.sort((a, b) => {
+      const colorA = (a.color || '').toString().trim()
+      const colorB = (b.color || '').toString().trim()
+      // 先按颜色排序
+      if (colorA !== colorB) {
+        return colorA.localeCompare(colorB, 'zh-CN')
+      }
+      // 同颜色按尺码升序
+      return getSizeOrder(a.size) - getSizeOrder(b.size)
+    })
+  })
   return Object.values(groups)
 }
 
-// 删除弹窗状态
+// 删除确认弹窗状态
 const deleteDialogVisible = ref(false)
 const deleteOrderId = ref(null)
 const deleting = ref(false)
+
+// 撤回确认弹窗状态
+const revokeDialogVisible = ref(false)
+const revokeOrderId = ref(null)
+const revoking = ref(false)
 
 // 入库确认弹窗状态
 const confirmDialogVisible = ref(false)
@@ -339,6 +411,27 @@ const confirmDeleteOrder = async () => {
     MessagePlugin.error(error.message || '删除失败')
   } finally {
     deleting.value = false
+  }
+}
+
+// 打开撤回确认弹窗
+const openRevokeDialog = (order) => {
+  revokeOrderId.value = order.id
+  revokeDialogVisible.value = true
+}
+
+// 确认撤回
+const confirmRevokeOrder = async () => {
+  revoking.value = true
+  try {
+    await purchaseStore.revokePurchaseOrder(revokeOrderId.value)
+    MessagePlugin.success('采购订单已撤回，成本已回滚')
+    revokeDialogVisible.value = false
+    await fetchSupplier()
+  } catch (error) {
+    MessagePlugin.error(error.message || '撤回失败')
+  } finally {
+    revoking.value = false
   }
 }
 
@@ -426,6 +519,7 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .supplier-detail-page {
+  padding-top: calc(56px + $safe-area-top);
   padding-bottom: 80px;
 
   // 加载状态
@@ -472,6 +566,11 @@ onMounted(() => {
 
   // 导航栏
   .nav-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
     background: linear-gradient(135deg, $warning-color, rgba($warning-color, 0.8));
     color: white;
     border-radius: 0 0 12px 12px;
@@ -483,7 +582,7 @@ onMounted(() => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      padding: calc(12px + $safe-area-top) 16px 12px 16px;
     }
 
     .nav-back {
