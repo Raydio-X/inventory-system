@@ -249,6 +249,7 @@ const TABLE_DEFINITIONS = [
         total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
         status VARCHAR(20) DEFAULT 'pending',
         remark VARCHAR(500),
+        is_first_purchase TINYINT(1) DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
@@ -657,6 +658,22 @@ async function checkAndMigrateSchema(connection) {
         );
       }
       log.success('  已有采购订单 supplier_id 回填完成');
+    }
+
+    // 检查 purchase_orders 表是否缺少 is_first_purchase 字段
+    const [firstPurchaseColumns] = await connection.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'purchase_orders' AND COLUMN_NAME = 'is_first_purchase'`,
+      [DB_CONFIG.database]
+    );
+
+    if (firstPurchaseColumns.length === 0) {
+      log.info('  检测到 purchase_orders 表缺少 is_first_purchase 字段，正在添加...');
+      await connection.query(`
+        ALTER TABLE purchase_orders 
+        ADD COLUMN is_first_purchase TINYINT(1) DEFAULT 0 AFTER remark
+      `);
+      log.success('  purchase_orders 表 is_first_purchase 字段添加完成');
     }
 
     // 删除订单明细表的外键约束（支持商品硬删除）

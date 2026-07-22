@@ -15,7 +15,7 @@ const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const messages = errors.array().map(err => err.msg).join(', ');
-    next(new ValidationError(messages));
+    return next(new ValidationError(messages));
   }
   next();
 };

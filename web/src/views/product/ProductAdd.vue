@@ -368,6 +368,22 @@
                 </div>
               </div>
             </div>
+
+            <div class="purchase-form-item">
+              <label class="purchase-form-label">采购类型</label>
+              <div class="purchase-type-options">
+                <label class="purchase-type-option" :class="{ active: purchaseForm.isFirstPurchase }" @click="purchaseForm.isFirstPurchase = true">
+                  <t-icon :name="purchaseForm.isFirstPurchase ? 'check-circle-filled' : 'circle'" class="type-radio-icon" />
+                  <span>首次采购</span>
+                  <span class="type-hint">仅记录成本，不累加库存</span>
+                </label>
+                <label class="purchase-type-option" :class="{ active: !purchaseForm.isFirstPurchase }" @click="purchaseForm.isFirstPurchase = false">
+                  <t-icon :name="!purchaseForm.isFirstPurchase ? 'check-circle-filled' : 'circle'" class="type-radio-icon" />
+                  <span>非首次采购</span>
+                  <span class="type-hint">记录成本并累加库存</span>
+                </label>
+              </div>
+            </div>
             
             <div class="purchase-form-item">
               <label class="purchase-form-label">备注</label>
@@ -655,7 +671,8 @@ const savedProductId = ref(null)
 // 采购表单
 const purchaseForm = ref({
   supplierId: null,
-  remark: ''
+  remark: '',
+  isFirstPurchase: true
 })
 
 // 点击保存按钮 -> 显示确认弹窗
@@ -825,7 +842,8 @@ const submitPurchase = async () => {
       supplier: supplier?.name || '',
       items,
       remark: purchaseForm.value.remark || '',
-      isNewProduct: true // 标识为新商品入库，自动完成入库操作
+      isNewProduct: true, // 标识为新商品入库，自动完成入库操作
+      isFirstPurchase: purchaseForm.value.isFirstPurchase
     }
 
     await api.post('/purchases', orderData)
@@ -1772,6 +1790,50 @@ onMounted(() => {
 
               .purchase-detail-stock {
                 color: $text-secondary;
+              }
+            }
+          }
+
+          .purchase-type-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .purchase-type-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.2s ease;
+
+            .type-radio-icon {
+              font-size: 20px;
+              color: #d9d9d9;
+              transition: color 0.2s;
+            }
+
+            span {
+              font-size: 14px;
+              color: #333;
+            }
+
+            .type-hint {
+              font-size: 12px;
+              color: #999;
+              margin-left: auto;
+            }
+
+            &.active {
+              border-color: #ff5722;
+              background: rgba(255, 87, 34, 0.04);
+
+              .type-radio-icon {
+                color: #ff5722;
               }
             }
           }

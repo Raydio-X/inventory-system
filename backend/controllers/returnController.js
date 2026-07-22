@@ -164,17 +164,17 @@ const createReturnOrder = async (req, res, next) => {
           [itemId, orderId, item.skuId, sku.product_name, sku.color, sku.size, item.quantity, sku.price]
         );
 
-        // 更新SKU库存（增加退货数量）
-        await connection.execute(
-          'UPDATE skus SET stock = stock + ? WHERE id = ?',
-          [item.quantity, item.skuId]
-        );
+        // 退货后商品不收回，不更新库存
+        // await connection.execute(
+        //   'UPDATE skus SET stock = stock + ? WHERE id = ?',
+        //   [item.quantity, item.skuId]
+        // );
 
-        // 插入库存流水
+        // 插入库存流水（记录退货但不增加库存）
         const logId = generateId('inv-');
         await connection.execute(
           `INSERT INTO inventory_logs (id, sku_id, type, quantity, order_id, order_no, remark)
-           VALUES (?, ?, 'sales_return', ?, ?, ?, '客户退货入库')`,
+           VALUES (?, ?, 'sales_return', ?, ?, ?, '客户退货（不收回商品）')`,
           [logId, item.skuId, item.quantity, orderId, orderNo]
         );
       }

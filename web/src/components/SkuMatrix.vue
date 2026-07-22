@@ -87,7 +87,7 @@
             <t-input-number
               :value="getQuantity(sku)"
               :min="0"
-              :max="sku.stock"
+              :max="props.mode === 'sale' ? sku.stock : 9999"
               size="small"
               theme="normal"
               class="quantity-input"
@@ -149,6 +149,12 @@ const props = defineProps({
   selectedQuantities: {
     type: Object,
     default: () => ({})
+  },
+  // 模式：sale-销售（限制库存），return-退货（不限制库存）
+  mode: {
+    type: String,
+    default: 'sale',
+    validator: (value) => ['sale', 'return'].includes(value)
   }
 })
 
@@ -245,7 +251,8 @@ const toggleSizeFilter = (size) => {
 
 // 处理数量输入变化
 const handleQuantityChange = (sku, value) => {
-  const quantity = Math.max(0, Math.min(value || 0, sku.stock))
+  const maxQuantity = props.mode === 'sale' ? sku.stock : 9999
+  const quantity = Math.max(0, Math.min(value || 0, maxQuantity))
   const key = `${sku.color}-${sku.size}`
 
   const newQuantities = { ...props.selectedQuantities }
@@ -261,17 +268,20 @@ const handleQuantityChange = (sku, value) => {
 
 // 点击卡片
 const handleCardClick = (sku) => {
-  if (sku.stock === 0) return
+  // 销售模式下，库存为0时不允许点击
+  if (props.mode === 'sale' && sku.stock === 0) return
   quickAdd(sku, 1)
 }
 
 // 快捷添加数量
 const quickAdd = (sku, quantity) => {
-  if (sku.stock === 0) return
+  // 销售模式下，库存为0时不允许添加
+  if (props.mode === 'sale' && sku.stock === 0) return
 
   const key = `${sku.color}-${sku.size}`
   const currentQuantity = props.selectedQuantities[key] || 0
-  const newQuantity = Math.min(currentQuantity + quantity, sku.stock)
+  const maxQuantity = props.mode === 'sale' ? sku.stock : 9999
+  const newQuantity = Math.min(currentQuantity + quantity, maxQuantity)
 
   const newQuantities = { ...props.selectedQuantities }
   newQuantities[key] = newQuantity

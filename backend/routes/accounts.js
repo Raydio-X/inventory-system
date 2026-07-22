@@ -11,7 +11,7 @@ const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const messages = errors.array().map(err => err.msg).join(', ');
-    next(new ValidationError(messages));
+    return next(new ValidationError(messages));
   }
   next();
 };
@@ -40,6 +40,19 @@ router.get('/today', accountController.getTodayStatistics);
  * GET /api/accounts/profit-detail
  */
 router.get('/profit-detail', accountController.getProfitDetail);
+
+/**
+ * 获取客户利润统计（月度/年度）
+ * GET /api/accounts/customer-profit?period=month&offset=0
+ */
+router.get('/customer-profit',
+  [
+    query('period').optional().isIn(['month', 'year']),
+    query('offset').optional().isInt()
+  ],
+  validate,
+  accountController.getCustomerProfit
+);
 
 /**
  * 获取账目记录列表

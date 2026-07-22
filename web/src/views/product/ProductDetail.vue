@@ -42,7 +42,7 @@
             </div>
             <div class="info-item">
               <label class="info-label">分类</label>
-              <div class="info-value">{{ getCategoryName(product.categoryId) }}</div>
+              <div class="info-value">{{ getCategoryName(product.category) }}</div>
             </div>
             <div class="info-item">
               <label class="info-label">供应商</label>

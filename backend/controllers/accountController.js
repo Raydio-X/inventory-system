@@ -59,17 +59,17 @@ const getStatistics = async (req, res, next) => {
 
     // 查询退货统计
     const returnResult = await db.query(
-      `SELECT 
+      `SELECT
         COUNT(*) as return_count,
         COALESCE(SUM(total_amount), 0) as return_amount
-       FROM return_orders 
+       FROM return_orders
        WHERE created_at >= ? AND created_at < ?`,
       [startStr, endStr]
     );
 
     // 查询退货商品数量
     const returnItemsResult = await db.query(
-      `SELECT 
+      `SELECT
         COALESCE(SUM(roi.quantity), 0) as return_count
        FROM return_order_items roi
        JOIN return_orders ro ON roi.order_id = ro.id
@@ -88,7 +88,9 @@ const getStatistics = async (req, res, next) => {
     const salesCount = Number(salesItemsRow.sales_count) || 0;
     const returnItemCount = Number(returnItemsRow.return_count) || 0;
 
-    const profit = salesAmount - costAmount;
+    // 利润 = 销售额 - 采购成本 - 退货金额
+    // 退货后商品不收回，退货金额作为成本从利润中扣除
+    const profit = salesAmount - costAmount - returnAmount;
 
     res.json({
       success: true,
@@ -284,9 +286,23 @@ const createAccountRecord = async (req, res, next) => {
  */
 const getProfitDetail = async (req, res, next) => {
   try {
+    // 首先获取所有商品及其SKU信息
+    const allProducts = await db.query(
+      `SELECT
+        p.id as product_id,
+        p.name as product_name,
+        s.id as sku_id,
+        s.color,
+        s.size
+       FROM products p
+       LEFT JOIN skus s ON p.id = s.product_id
+       WHERE p.status = 'active'
+       ORDER BY p.name, s.color, s.size`
+    );
+
     // 查询每个商品的销售统计（销售额）
     const salesDetail = await db.query(
-      `SELECT 
+      `SELECT
         soi.product_name,
         soi.color,
         soi.size,
@@ -299,7 +315,7 @@ const getProfitDetail = async (req, res, next) => {
 
     // 查询每个商品的采购成本（从采购订单明细）
     const purchaseDetail = await db.query(
-      `SELECT 
+      `SELECT
         poi.product_name,
         poi.color,
         poi.size,
@@ -313,7 +329,7 @@ const getProfitDetail = async (req, res, next) => {
 
     // 查询每个商品的退货统计
     const returnDetail = await db.query(
-      `SELECT 
+      `SELECT
         roi.product_name,
         roi.color,
         roi.size,
@@ -324,25 +340,37 @@ const getProfitDetail = async (req, res, next) => {
        GROUP BY roi.product_name, roi.color, roi.size`
     );
 
-    // 合并销售、采购、退货数据
+    // 初始化所有商品和SKU（确保所有已创建的商品都显示）
     const productMap = new Map();
-    
+
+    // 先添加所有商品及其SKU
+    allProducts.forEach(item => {
+      if (item.sku_id) {
+        const key = `${item.product_name}|${item.color}|${item.size}`;
+        productMap.set(key, {
+          productName: item.product_name,
+          color: item.color,
+          size: item.size,
+          salesCount: 0,
+          salesAmount: 0,
+          costAmount: 0,
+          purchaseCount: 0,
+          returnCount: 0,
+          returnAmount: 0
+        });
+      }
+    });
+
     // 处理采购成本数据
     purchaseDetail.forEach(item => {
       const key = `${item.product_name}|${item.color}|${item.size}`;
-      productMap.set(key, {
-        productName: item.product_name,
-        color: item.color,
-        size: item.size,
-        salesCount: 0,
-        salesAmount: 0,
-        costAmount: Number(item.cost_amount) || 0,
-        purchaseCount: Number(item.purchase_count) || 0,
-        returnCount: 0,
-        returnAmount: 0
-      });
+      if (productMap.has(key)) {
+        const existing = productMap.get(key);
+        existing.costAmount = Number(item.cost_amount) || 0;
+        existing.purchaseCount = Number(item.purchase_count) || 0;
+      }
     });
-    
+
     // 处理销售数据
     salesDetail.forEach(item => {
       const key = `${item.product_name}|${item.color}|${item.size}`;
@@ -350,18 +378,6 @@ const getProfitDetail = async (req, res, next) => {
         const existing = productMap.get(key);
         existing.salesCount = Number(item.sales_count) || 0;
         existing.salesAmount = Number(item.sales_amount) || 0;
-      } else {
-        productMap.set(key, {
-          productName: item.product_name,
-          color: item.color,
-          size: item.size,
-          salesCount: Number(item.sales_count) || 0,
-          salesAmount: Number(item.sales_amount) || 0,
-          costAmount: 0,
-          purchaseCount: 0,
-          returnCount: 0,
-          returnAmount: 0
-        });
       }
     });
 
@@ -372,18 +388,6 @@ const getProfitDetail = async (req, res, next) => {
         const existing = productMap.get(key);
         existing.returnCount = Number(item.return_count) || 0;
         existing.returnAmount = Number(item.return_amount) || 0;
-      } else {
-        productMap.set(key, {
-          productName: item.product_name,
-          color: item.color,
-          size: item.size,
-          salesCount: 0,
-          salesAmount: 0,
-          costAmount: 0,
-          purchaseCount: 0,
-          returnCount: Number(item.return_count) || 0,
-          returnAmount: Number(item.return_amount) || 0
-        });
       }
     });
 
@@ -392,11 +396,10 @@ const getProfitDetail = async (req, res, next) => {
     productMap.forEach(item => {
       const netSalesCount = item.salesCount - item.returnCount;
       const netSalesAmount = item.salesAmount - item.returnAmount;
-      
-      // 利润 = 净销售额 - 采购总成本
-      // 注意：退货时，如果退货金额大于成本，需要调整
-      // 简单处理：利润 = 净销售额 - 采购成本
-      const profit = netSalesAmount - item.costAmount;
+
+      // 利润 = 销售额 - 采购成本 - 退货金额
+      // 退货后商品不收回，退货金额作为成本从利润中扣除
+      const profit = item.salesAmount - item.costAmount - item.returnAmount;
 
       if (!productGroups[item.productName]) {
         productGroups[item.productName] = {
@@ -448,10 +451,133 @@ const getProfitDetail = async (req, res, next) => {
   }
 };
 
+/**
+ * 获取客户利润统计
+ * GET /api/accounts/customer-profit?period=month&offset=0
+ */
+const getCustomerProfit = async (req, res, next) => {
+  try {
+    const period = req.query.period || 'month';
+    const offset = parseInt(req.query.offset) || 0;
+
+    // 计算时间范围
+    const now = new Date();
+    let startDate, endDate, label;
+
+    if (period === 'month') {
+      const base = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      startDate = new Date(base.getFullYear(), base.getMonth(), 1);
+      endDate = new Date(base.getFullYear(), base.getMonth() + 1, 1);
+      label = `${base.getFullYear()}年${base.getMonth() + 1}月`;
+    } else {
+      const year = now.getFullYear() + offset;
+      startDate = new Date(year, 0, 1);
+      endDate = new Date(year + 1, 0, 1);
+      label = `${year}年`;
+    }
+
+    const startStr = startDate.toISOString().slice(0, 10);
+    const endStr = endDate.toISOString().slice(0, 10);
+
+    // 查询每个客户的销售统计
+    const customerSales = await db.query(
+      `SELECT 
+        so.customer_id,
+        so.customer_name,
+        COUNT(DISTINCT so.id) as order_count,
+        COALESCE(SUM(soi.quantity), 0) as sales_count,
+        COALESCE(SUM(soi.quantity * soi.price), 0) as sales_amount,
+        COALESCE(SUM(soi.quantity * soi.cost_price), 0) as cost_amount
+       FROM sales_orders so
+       LEFT JOIN sales_order_items soi ON so.id = soi.order_id
+       WHERE so.created_at >= ? AND so.created_at < ?
+       GROUP BY so.customer_id, so.customer_name`,
+      [startStr, endStr]
+    );
+
+    // 查询每个客户的退货统计
+    const customerReturns = await db.query(
+      `SELECT 
+        ro.customer_id,
+        COALESCE(SUM(roi.quantity), 0) as return_count,
+        COALESCE(SUM(roi.quantity * roi.price), 0) as return_amount
+       FROM return_orders ro
+       LEFT JOIN return_order_items roi ON ro.id = roi.order_id
+       WHERE ro.created_at >= ? AND ro.created_at < ?
+       GROUP BY ro.customer_id`,
+      [startStr, endStr]
+    );
+
+    // 合并数据
+    const customerMap = new Map();
+
+    // 处理销售数据
+    customerSales.forEach(item => {
+      const customerId = item.customer_id || 'walk-in';
+      customerMap.set(customerId, {
+        customerId,
+        customerName: item.customer_name || '散客',
+        orderCount: Number(item.order_count) || 0,
+        salesCount: Number(item.sales_count) || 0,
+        salesAmount: Number(item.sales_amount) || 0,
+        costAmount: Number(item.cost_amount) || 0,
+        returnCount: 0,
+        returnAmount: 0
+      });
+    });
+
+    // 处理退货数据
+    customerReturns.forEach(item => {
+      const customerId = item.customer_id || 'walk-in';
+      if (customerMap.has(customerId)) {
+        const existing = customerMap.get(customerId);
+        existing.returnCount = Number(item.return_count) || 0;
+        existing.returnAmount = Number(item.return_amount) || 0;
+      } else {
+        customerMap.set(customerId, {
+          customerId,
+          customerName: '散客',
+          orderCount: 0,
+          salesCount: 0,
+          salesAmount: 0,
+          costAmount: 0,
+          returnCount: Number(item.return_count) || 0,
+          returnAmount: Number(item.return_amount) || 0
+        });
+      }
+    });
+
+    // 计算利润并转为数组
+    const customers = Array.from(customerMap.values()).map(customer => {
+      // 利润 = 销售额 - 成本 - 退货金额
+      const profit = customer.salesAmount - customer.costAmount - customer.returnAmount;
+      return {
+        ...customer,
+        profit
+      };
+    }).sort((a, b) => b.profit - a.profit);
+
+    res.json({
+      success: true,
+      data: {
+        period,
+        offset,
+        label,
+        startDate: startStr,
+        endDate: endStr,
+        customers
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getStatistics,
   getTodayStatistics,
   getAccountRecords,
   createAccountRecord,
-  getProfitDetail
+  getProfitDetail,
+  getCustomerProfit
 };

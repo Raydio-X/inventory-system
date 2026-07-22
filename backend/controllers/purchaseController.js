@@ -34,6 +34,7 @@ function mapPurchaseOrderRow(row) {
     totalAmount: parseFloat(row.total_amount),
     status: row.status,
     remark: row.remark || '',
+    isFirstPurchase: row.is_first_purchase ? true : false,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -150,7 +151,7 @@ const getPurchaseOrderById = async (req, res, next) => {
  */
 const createPurchaseOrder = async (req, res, next) => {
   try {
-    const { supplierId, supplier, items, remark, isNewProduct } = req.body;
+    const { supplierId, supplier, items, remark, isNewProduct, isFirstPurchase } = req.body;
 
     // 数据验证
     if (!items || items.length === 0) {
@@ -210,9 +211,9 @@ const createPurchaseOrder = async (req, res, next) => {
       orderNo = `CG${dateStr}${String(count).padStart(4, '0')}`;
 
       await connection.query(
-        `INSERT INTO purchase_orders (id, order_no, supplier, supplier_id, total_amount, status, remark)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [orderId, orderNo, supplierName, supplierId || null, totalAmount, orderStatus, remark || '']
+        `INSERT INTO purchase_orders (id, order_no, supplier, supplier_id, total_amount, status, remark, is_first_purchase)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, orderNo, supplierName, supplierId || null, totalAmount, orderStatus, remark || '', isFirstPurchase ? 1 : 0]
       );
 
       for (const item of items) {
@@ -239,12 +240,12 @@ const createPurchaseOrder = async (req, res, next) => {
             );
           }
 
-          // 记录库存流水（记录采购信息，但不改变库存）
+          // 记录库存流水
           const logId = `inv-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
           await connection.execute(
             `INSERT INTO inventory_logs (id, sku_id, type, quantity, order_id, order_no, remark)
              VALUES (?, ?, 'purchase_in', ?, ?, ?, ?)`,
-            [logId, item.skuId, item.quantity, orderId, orderNo, '新商品入库成本记录']
+            [logId, item.skuId, item.quantity, orderId, orderNo, '新商品入库']
           );
         }
 
@@ -314,11 +315,14 @@ const confirmPurchase = async (req, res, next) => {
 
         if (!currentSku) continue;
 
-        // 更新SKU库存
-        await connection.execute(
-          'UPDATE skus SET stock = stock + ? WHERE id = ?',
-          [item.quantity, item.sku_id]
-        );
+        // 首次采购时不更新SKU库存，只记录成本
+        if (!existing.is_first_purchase) {
+          // 更新SKU库存
+          await connection.execute(
+            'UPDATE skus SET stock = stock + ? WHERE id = ?',
+            [item.quantity, item.sku_id]
+          );
+        }
 
         // 移动加权平均法计算商品成本价
         if (item.cost_price > 0) {
@@ -331,7 +335,7 @@ const confirmPurchase = async (req, res, next) => {
           const oldCostPrice = Number(currentProduct?.cost_price || 0);
 
           const oldStock = currentSku.stock;
-          const newStock = oldStock + item.quantity;
+          const newStock = existing.is_first_purchase ? oldStock : oldStock + item.quantity;
           const newCostPrice = Number(item.cost_price);
 
           // 移动加权平均：新成本 = (旧库存 * 旧成本 + 入库数量 * 入库成本) / 新库存
@@ -348,10 +352,11 @@ const confirmPurchase = async (req, res, next) => {
 
         // 记录库存流水
         const logId = `inv-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
+        const logRemark = existing.is_first_purchase ? '首次采购入库（仅记录成本）' : '采购入库';
         await connection.execute(
           `INSERT INTO inventory_logs (id, sku_id, type, quantity, order_id, order_no, remark)
-           VALUES (?, ?, 'purchase_in', ?, ?, ?, '采购入库')`,
-          [logId, item.sku_id, item.quantity, id, existing.order_no]
+           VALUES (?, ?, 'purchase_in', ?, ?, ?, ?)`,
+          [logId, item.sku_id, item.quantity, id, existing.order_no, logRemark]
         );
       }
 
@@ -395,7 +400,7 @@ const confirmPurchase = async (req, res, next) => {
 const updatePurchaseOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { items, remark } = req.body;
+    const { items, remark, isFirstPurchase } = req.body;
 
     const [existing] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
     if (!existing) {
@@ -440,8 +445,8 @@ const updatePurchaseOrder = async (req, res, next) => {
     await db.transaction(async (connection) => {
       // 更新订单总金额和备注
       await connection.execute(
-        'UPDATE purchase_orders SET total_amount = ?, remark = ? WHERE id = ?',
-        [totalAmount, remark || existing.remark, id]
+        'UPDATE purchase_orders SET total_amount = ?, remark = ?, is_first_purchase = ? WHERE id = ?',
+        [totalAmount, remark || existing.remark, isFirstPurchase ? 1 : 0, id]
       );
 
       // 删除原有明细

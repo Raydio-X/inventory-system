@@ -51,24 +51,79 @@
       </div>
     </div>
 
-    <!-- 今日数据 -->
-    <div class="today-section">
-      <div class="section-title">
-        <t-icon name="time" />
-        <span>今日数据</span>
+    <!-- 客户利润模块 -->
+    <div class="customer-profit-section">
+      <div class="section-header">
+        <div class="section-title">
+          <t-icon name="user" />
+          <span>客户利润</span>
+        </div>
+        <div class="header-actions">
+          <div class="time-switch">
+            <div :class="['switch-item', { active: customerProfitTimeDim === 'month' }]" @click="switchCustomerProfitPeriod('month')">月度</div>
+            <div :class="['switch-item', { active: customerProfitTimeDim === 'year' }]" @click="switchCustomerProfitPeriod('year')">年度</div>
+          </div>
+        </div>
       </div>
-      <div class="today-cards">
-        <div class="today-item">
-          <div class="today-value">¥{{ formatStatAmount(todayData.salesAmount) }}</div>
-          <div class="today-label">今日销售额</div>
+
+      <!-- 时间选择器 -->
+      <div class="time-selector">
+        <div class="selector-arrow" @click="shiftCustomerProfitTime(-1)">
+          <t-icon name="chevron-left" />
         </div>
-        <div class="today-item">
-          <div class="today-value">{{ todayData.salesCount }}</div>
-          <div class="today-label">今日销量</div>
+        <div class="selector-value">{{ customerProfitLabel || '加载中...' }}</div>
+        <div class="selector-arrow" @click="shiftCustomerProfitTime(1)">
+          <t-icon name="chevron-right" />
         </div>
-        <div class="today-item">
-          <div class="today-value">{{ todayData.orderCount }}</div>
-          <div class="today-label">今日订单</div>
+      </div>
+
+      <!-- 客户筛选 -->
+      <div class="customer-filter">
+        <t-input
+          v-model="customerSearchKeyword"
+          placeholder="搜索客户姓名"
+          clearable
+          class="search-input"
+        >
+          <template #prefix-icon>
+            <t-icon name="search" />
+          </template>
+        </t-input>
+      </div>
+
+      <!-- 客户利润列表 -->
+      <div class="customer-profit-list">
+        <div v-if="loading" class="loading-state">
+          <t-icon name="loading" class="loading-icon" />
+          <span>加载中...</span>
+        </div>
+
+        <div v-else-if="filteredCustomerProfits.length === 0" class="empty-state">
+          <t-icon name="inbox" class="empty-icon" />
+          <span>暂无数据</span>
+        </div>
+
+        <div v-else class="profit-items">
+          <div
+            v-for="customer in filteredCustomerProfits"
+            :key="customer.customerId"
+            class="profit-item"
+          >
+            <div class="customer-info">
+              <div class="customer-name">{{ customer.customerName }}</div>
+              <div class="customer-stats">
+                <span class="stat-item">订单 {{ customer.orderCount }}</span>
+                <span class="stat-divider">|</span>
+                <span class="stat-item">销量 {{ customer.salesCount }}件</span>
+              </div>
+            </div>
+            <div class="profit-info">
+              <div class="profit-amount" :class="{ negative: customer.profit < 0 }">
+                ¥{{ formatStatAmount(customer.profit) }}
+              </div>
+              <div class="profit-label">利润</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -76,10 +131,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Navbar from '@/components/Navbar.vue'
 import api from '@/utils/api'
+import { Input } from 'tdesign-vue-next'
 
 const router = useRouter()
 
@@ -96,11 +152,21 @@ const statsData = ref({
   orderCount: 0
 })
 
-// 今日数据
-const todayData = ref({
-  salesAmount: 0,
-  salesCount: 0,
-  orderCount: 0
+// 客户利润数据
+const customerProfitTimeDim = ref('month')
+const customerProfitTimeOffset = ref(0)
+const customerProfitLabel = ref('')
+const customerProfits = ref([])
+const customerSearchKeyword = ref('')
+const loading = ref(false)
+
+// 筛选后的客户利润
+const filteredCustomerProfits = computed(() => {
+  if (!customerSearchKeyword.value) return customerProfits.value
+  const keyword = customerSearchKeyword.value.toLowerCase()
+  return customerProfits.value.filter(c =>
+    c.customerName.toLowerCase().includes(keyword)
+  )
 })
 
 // 切换时间维度
@@ -114,6 +180,19 @@ const switchPeriod = (period) => {
 const shiftTime = (dir) => {
   statsTimeOffset.value += dir
   fetchStatistics()
+}
+
+// 切换客户利润时间维度
+const switchCustomerProfitPeriod = (period) => {
+  customerProfitTimeDim.value = period
+  customerProfitTimeOffset.value = 0
+  fetchCustomerProfits()
+}
+
+// 客户利润时间偏移切换
+const shiftCustomerProfitTime = (dir) => {
+  customerProfitTimeOffset.value += dir
+  fetchCustomerProfits()
 }
 
 // 跳转到利润详情
@@ -144,19 +223,24 @@ const fetchStatistics = async () => {
   }
 }
 
-// 从后端获取今日数据
-const fetchTodayStatistics = async () => {
+// 从后端获取客户利润数据
+const fetchCustomerProfits = async () => {
+  loading.value = true
   try {
-    const res = await api.get('/accounts/today')
-    if (res.success && res.data) {
-      todayData.value = {
-        salesAmount: res.data.salesAmount || 0,
-        salesCount: res.data.salesCount || 0,
-        orderCount: res.data.orderCount || 0
+    const res = await api.get('/accounts/customer-profit', {
+      params: {
+        period: customerProfitTimeDim.value,
+        offset: customerProfitTimeOffset.value
       }
+    })
+    if (res.success && res.data) {
+      customerProfitLabel.value = res.data.label
+      customerProfits.value = res.data.customers || []
     }
   } catch (error) {
-    console.error('获取今日数据失败:', error)
+    console.error('获取客户利润数据失败:', error)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -169,7 +253,7 @@ const formatStatAmount = (amount) => {
 // 初始化
 onMounted(() => {
   fetchStatistics()
-  fetchTodayStatistics()
+  fetchCustomerProfits()
 })
 </script>
 
@@ -310,49 +394,204 @@ onMounted(() => {
     }
   }
 
-  // 今日数据
-  .today-section {
-    .section-title {
+  // 客户利润模块
+  .customer-profit-section {
+    background: $bg-card;
+    border-radius: $radius-lg;
+    padding: $spacing-lg;
+    margin-bottom: $spacing-lg;
+
+    .section-header {
       display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 6px;
-      font-size: $font-md;
-      font-weight: 600;
-      color: $text-primary;
       margin-bottom: $spacing-md;
 
-      .t-icon {
-        font-size: 18px;
-        color: $primary-color;
-        position: relative;
-        top: -1px;
-      }
-    }
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: $font-md;
+        font-weight: 600;
+        color: $text-primary;
 
-    .today-cards {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-
-      .today-item {
-        background: $bg-card;
-        border-radius: $radius-md;
-        padding: 14px 12px;
-        text-align: center;
-
-        .today-value {
+        .t-icon {
           font-size: 18px;
-          font-weight: 700;
-          color: $text-primary;
-          margin-bottom: 4px;
+          color: $primary-color;
         }
+      }
 
-        .today-label {
-          font-size: 12px;
-          color: $text-secondary;
+      .header-actions {
+        .time-switch {
+          display: flex;
+          background: $bg-color;
+          border-radius: 6px;
+          padding: 2px;
+
+          .switch-item {
+            padding: 4px 12px;
+            font-size: 12px;
+            color: $text-secondary;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+
+            &.active {
+              background: $primary-color;
+              color: white;
+              font-weight: 600;
+            }
+          }
         }
       }
     }
+
+    .time-selector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 10px 0;
+      margin-bottom: $spacing-md;
+
+      .selector-arrow {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        cursor: pointer;
+        color: $text-secondary;
+
+        &:active {
+          background: $bg-hover;
+          color: $primary-color;
+        }
+
+        .t-icon {
+          font-size: 18px;
+        }
+      }
+
+      .selector-value {
+        font-size: 15px;
+        font-weight: 600;
+        color: $text-primary;
+        min-width: 100px;
+        text-align: center;
+      }
+    }
+
+    .customer-filter {
+      margin-bottom: $spacing-md;
+
+      .search-input {
+        width: 100%;
+        border-radius: $radius-md;
+        background: $bg-color;
+
+        :deep(.t-input__inner) {
+          height: 36px;
+          padding-left: $spacing-md;
+        }
+      }
+    }
+
+    .customer-profit-list {
+      .loading-state,
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: $spacing-xl * 2;
+        color: $text-placeholder;
+
+        .loading-icon,
+        .empty-icon {
+          font-size: 48px;
+          margin-bottom: $spacing-sm;
+        }
+
+        .loading-icon {
+          animation: spin 1s linear infinite;
+        }
+      }
+
+      .profit-items {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-sm;
+
+        .profit-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: $bg-color;
+          border-radius: $radius-md;
+          padding: $spacing-md;
+          transition: all 0.2s;
+
+          &:active {
+            background: $bg-hover;
+          }
+
+          .customer-info {
+            flex: 1;
+
+            .customer-name {
+              font-size: $font-md;
+              font-weight: 600;
+              color: $text-primary;
+              margin-bottom: 4px;
+            }
+
+            .customer-stats {
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              font-size: $font-xs;
+              color: $text-secondary;
+
+              .stat-divider {
+                color: $text-placeholder;
+              }
+            }
+          }
+
+          .profit-info {
+            text-align: right;
+
+            .profit-amount {
+              font-size: 18px;
+              font-weight: 700;
+              color: $success-color;
+
+              &.negative {
+                color: $error-color;
+              }
+            }
+
+            .profit-label {
+              font-size: $font-xs;
+              color: $text-secondary;
+              margin-top: 2px;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// 加载动画
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

@@ -14,7 +14,7 @@ const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const messages = errors.array().map(err => err.msg).join(', ');
-    next(new ValidationError(messages));
+    return next(new ValidationError(messages));
   }
   next();
 };
@@ -53,16 +53,16 @@ router.post('/orders',
     body('items').isArray({ min: 1 }).withMessage('订单商品不能为空'),
     body('items.*.skuId').notEmpty().withMessage('SKU ID不能为空'),
     body('items.*.quantity').isInt({ min: 1 }).withMessage('数量必须大于0'),
-    body('items.*.price').optional().isFloat({ min: 0 }),
-    body('customerId').optional().isString(),
-    body('customerName').optional().isString(),
-    body('totalAmount').optional().isFloat({ min: 0 }),
-    body('paidAmount').optional().isFloat({ min: 0 }),
-    body('debtAmount').optional().isFloat({ min: 0 }),
-    body('discount').optional().isFloat({ min: 0 }),
-    body('paymentMethod').optional().isIn(['cash', 'wechat', 'alipay', 'card']),
-    body('status').optional().isIn(['unpaid', 'partial', 'paid', 'settled']),
-    body('remark').optional().isString()
+    body('items.*.price').optional().isFloat({ min: 0 }).withMessage('价格格式错误'),
+    body('customerId').optional().isString().withMessage('客户ID格式错误'),
+    body('customerName').optional().isString().withMessage('客户名称格式错误'),
+    body('totalAmount').optional().isFloat({ min: 0 }).withMessage('总金额格式错误'),
+    body('paidAmount').optional().isFloat({ min: 0 }).withMessage('已付金额格式错误'),
+    body('debtAmount').optional().isFloat({ min: 0 }).withMessage('欠款金额格式错误'),
+    body('discount').optional().isFloat({ min: 0 }).withMessage('折扣金额格式错误'),
+    body('paymentMethod').optional().isIn(['cash', 'wechat', 'alipay', 'card']).withMessage('支付方式无效'),
+    body('status').optional().isIn(['unpaid', 'partial', 'paid', 'settled']).withMessage('订单状态无效'),
+    body('remark').optional().isString().withMessage('备注格式错误')
   ],
   validate,
   billingController.createSalesOrder

@@ -97,7 +97,7 @@
               <span class="badge-text">退货</span>
             </div>
             <div class="product-stock-badge" :class="{ low: getTotalStock(product) <= 10 }">
-              <t-icon name="inventory" />
+              <t-icon name="shop" />
               <span>{{ getTotalStock(product) }}件</span>
             </div>
           </div>
@@ -165,6 +165,7 @@
           <sku-matrix
             :skus="selectedProduct.skus"
             :selected-quantities="selectedQuantities"
+            mode="return"
             @update:selected-quantities="updateQuantities"
             @select="onSkuSelect"
           />
@@ -321,7 +322,20 @@
                 <span class="spec-tag">{{ item.color }}</span>
                 <span class="spec-tag">{{ item.size }}</span>
               </span>
-              <span class="col-price">¥{{ item.price }}</span>
+              <span class="col-price editable" @click="startEditPrice(index)">
+                <span v-if="editingPriceIndex !== index">¥{{ item.price }}</span>
+                <input
+                  v-else
+                  v-model.number="item.price"
+                  type="number"
+                  class="price-input"
+                  @blur="finishEditPrice"
+                  @keyup.enter="finishEditPrice"
+                  ref="priceInput"
+                  step="0.01"
+                  min="0"
+                />
+              </span>
               <span class="col-qty">{{ item.quantity }}</span>
               <span class="col-action" @click="removeItem(item.skuId)">
                 <t-icon name="close-circle" />
@@ -382,6 +396,9 @@ const selectedQuantities = ref({})
 
 const returnItems = ref([])
 const showReturnList = ref(false)
+
+const editingPriceIndex = ref(-1)
+const priceInput = ref(null)
 
 const filteredProducts = computed(() => {
   let products = productStore.products.filter(p => p.status === 'active')
@@ -493,6 +510,20 @@ const removeItem = (skuId) => {
   returnItems.value = returnItems.value.filter(item => item.skuId !== skuId)
 }
 
+const startEditPrice = (index) => {
+  editingPriceIndex.value = index
+  // 等待DOM更新后聚焦输入框
+  setTimeout(() => {
+    if (priceInput.value && priceInput.value[index]) {
+      priceInput.value[index].focus()
+    }
+  }, 50)
+}
+
+const finishEditPrice = () => {
+  editingPriceIndex.value = -1
+}
+
 const confirmReturn = () => {
   if (!selectedCustomer.value) {
     MessagePlugin.warning('请选择客户')
@@ -518,7 +549,8 @@ const confirmReturn = () => {
   }
 
   returnItems.value.forEach(item => {
-    productStore.updateSkuStock(item.skuId, item.quantity)
+    // 退货后商品不收回，不增加库存
+    // productStore.updateSkuStock(item.skuId, item.quantity)
     inventoryStore.addSalesReturnLog(item.skuId, item.quantity, returnOrder.id, returnOrder.orderNo)
   })
 
@@ -1673,6 +1705,42 @@ onMounted(() => {
           flex: 1.2;
           text-align: right;
           color: #666;
+
+          &.editable {
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background 0.15s;
+
+            &:active {
+              background: rgba($primary-color, 0.1);
+            }
+          }
+
+          .price-input {
+            width: 60px;
+            height: 24px;
+            padding: 2px 4px;
+            border: 1px solid $primary-color;
+            border-radius: 4px;
+            font-size: 13px;
+            color: $primary-color;
+            font-weight: 600;
+            text-align: right;
+            background: white;
+            outline: none;
+
+            &:focus {
+              border-color: $primary-color;
+              box-shadow: 0 0 0 2px rgba($primary-color, 0.1);
+            }
+
+            &::-webkit-inner-spin-button,
+            &::-webkit-outer-spin-button {
+              -webkit-appearance: none;
+              margin: 0;
+            }
+          }
         }
 
         .col-qty {

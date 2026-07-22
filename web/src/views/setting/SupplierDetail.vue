@@ -89,6 +89,7 @@
                 <span :class="['status-tag', getOrderStatusClass(order.status)]">
                   {{ getOrderStatusText(order.status) }}
                 </span>
+                <span v-if="order.isFirstPurchase" class="first-purchase-tag">首次采购</span>
                 <t-icon name="chevron-down" :class="['expand-icon', { expanded: expandedOrders[order.id] }]" />
               </div>
             </div>
@@ -841,6 +842,16 @@ onMounted(() => {
                 background: rgba($warning-color, 0.1);
                 color: $warning-color;
               }
+            }
+
+            .first-purchase-tag {
+              display: inline-block;
+              padding: 2px 8px;
+              border-radius: 3px;
+              font-size: 10px;
+              background: rgba(255, 152, 0, 0.1);
+              color: #ff9800;
+              margin-left: 6px;
             }
 
             .expand-icon {

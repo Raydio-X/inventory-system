@@ -125,6 +125,26 @@
         </div>
       </div>
 
+      <!-- 采购类型 -->
+      <div class="info-card">
+        <div class="card-header">
+          <t-icon name="flag" class="header-icon" />
+          <span class="header-title">采购类型</span>
+        </div>
+        <div class="purchase-type-options">
+          <label class="purchase-type-option" :class="{ active: order.isFirstPurchase }" @click="order.isFirstPurchase = true">
+            <t-icon :name="order.isFirstPurchase ? 'check-circle-filled' : 'circle'" class="type-radio-icon" />
+            <span>首次采购</span>
+            <span class="type-hint">仅记录成本，不累加库存</span>
+          </label>
+          <label class="purchase-type-option" :class="{ active: !order.isFirstPurchase }" @click="order.isFirstPurchase = false">
+            <t-icon :name="!order.isFirstPurchase ? 'check-circle-filled' : 'circle'" class="type-radio-icon" />
+            <span>非首次采购</span>
+            <span class="type-hint">记录成本并累加库存</span>
+          </label>
+        </div>
+      </div>
+
       <!-- 金额汇总 -->
       <div v-if="order.items.length > 0" class="info-card summary-card">
         <div class="summary-row">
@@ -258,6 +278,7 @@ const supplierOptions = computed(() =>
 const order = ref({
   supplierId: null,
   remark: '',
+  isFirstPurchase: false,
   items: []
 })
 
@@ -350,6 +371,7 @@ const submitOrder = async () => {
       supplierId: order.value.supplierId || null,
       remark: order.value.remark || '',
       isNewProduct: isNewProduct.value, // 传递新商品标识
+      isFirstPurchase: order.value.isFirstPurchase,
       items: order.value.items.map(item => ({
         productId: item.productId,
         skuId: item.skuId,
@@ -399,6 +421,7 @@ const loadOrderData = async (orderId) => {
     if (res) {
       order.value.supplierId = res.supplierId || null
       order.value.remark = res.remark || ''
+      order.value.isFirstPurchase = res.isFirstPurchase || false
       order.value.items = (res.items || []).map(item => ({
         productId: item.productId,
         skuId: item.skuId,
@@ -424,6 +447,7 @@ onMounted(async () => {
     // 接收新商品入库标识
     if (route.query.isNewProduct === 'true') {
       isNewProduct.value = true
+      order.value.isFirstPurchase = true
     }
 
     // 检查是否为编辑模式
@@ -773,6 +797,51 @@ onMounted(async () => {
       display: flex;
       justify-content: center;
       padding: $spacing-md 0;
+    }
+  }
+
+  // 采购类型选项
+  .purchase-type-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .purchase-type-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: #fafafa;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    .type-radio-icon {
+      font-size: 20px;
+      color: #d9d9d9;
+      transition: color 0.2s;
+    }
+
+    span {
+      font-size: 14px;
+      color: #333;
+    }
+
+    .type-hint {
+      font-size: 12px;
+      color: #999;
+      margin-left: auto;
+    }
+
+    &.active {
+      border-color: #ff9800;
+      background: rgba(255, 152, 0, 0.04);
+
+      .type-radio-icon {
+        color: #ff9800;
+      }
     }
   }
 
