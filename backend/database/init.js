@@ -334,6 +334,9 @@ const TABLE_DEFINITIONS = [
 const BASE_DATA = {
   users: [
     { id: 'user-001', username: 'admin', password: '$2a$10$0rBgJ.yzspntL97Jxx0EAe9lVma0c8OpDlTAzia5lflYEUYokfCle', name: '店主', role: 'admin' }
+  ],
+  customers: [
+    { id: 'customer-walk-in', name: '散客', phone: null, address: null, remark: '默认散客客户' }
   ]
 };
 
@@ -477,6 +480,17 @@ async function insertBaseData(connection) {
       );
     }
     log.info(`  默认用户: ${BASE_DATA.users.length} 条`);
+
+    // 插入默认散客客户
+    for (const customer of BASE_DATA.customers) {
+      await connection.execute(
+        `INSERT INTO customers (id, name, phone, address, remark) VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), remark = VALUES(remark)`,
+        [customer.id, customer.name, customer.phone, customer.address, customer.remark]
+      );
+    }
+    log.info(`  默认散客客户: ${BASE_DATA.customers.length} 条`);
+
     log.success('基础配置数据插入完成');
   } catch (err) {
     log.error(`基础数据插入失败: ${err.message}`);

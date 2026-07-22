@@ -58,12 +58,6 @@
           <t-icon name="user" />
           <span>客户利润</span>
         </div>
-        <div class="header-actions">
-          <div class="time-switch">
-            <div :class="['switch-item', { active: customerProfitTimeDim === 'month' }]" @click="switchCustomerProfitPeriod('month')">月度</div>
-            <div :class="['switch-item', { active: customerProfitTimeDim === 'year' }]" @click="switchCustomerProfitPeriod('year')">年度</div>
-          </div>
-        </div>
       </div>
 
       <!-- 时间选择器 -->
@@ -153,7 +147,7 @@ const statsData = ref({
 })
 
 // 客户利润数据
-const customerProfitTimeDim = ref('month')
+const customerProfitTimeDim = ref('year')
 const customerProfitTimeOffset = ref(0)
 const customerProfitLabel = ref('')
 const customerProfits = ref([])
@@ -180,13 +174,6 @@ const switchPeriod = (period) => {
 const shiftTime = (dir) => {
   statsTimeOffset.value += dir
   fetchStatistics()
-}
-
-// 切换客户利润时间维度
-const switchCustomerProfitPeriod = (period) => {
-  customerProfitTimeDim.value = period
-  customerProfitTimeOffset.value = 0
-  fetchCustomerProfits()
 }
 
 // 客户利润时间偏移切换

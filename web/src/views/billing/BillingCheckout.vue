@@ -8,7 +8,9 @@
       <div class="info-header">订单信息</div>
       <div class="info-row">
         <span class="info-label">客户</span>
-        <span class="info-value">{{ currentCustomer?.name || '散客' }}</span>
+        <span class="info-value">
+          {{ currentCustomer === null ? '未选择' : currentCustomer?.id === 'customer-walk-in' ? '散客' : currentCustomer?.name }}
+        </span>
       </div>
       <div class="info-row">
         <span class="info-label">商品数量</span>
@@ -142,6 +144,18 @@ const setFullAmount = () => {
 
 const confirmOrder = () => {
   if (paidAmount.value <= 0) return
+
+  // 未选择客户验证
+  if (currentCustomer.value === null) {
+    MessagePlugin.warning('请先选择客户或散客')
+    return
+  }
+
+  // 散客订单验证：必须选择"已结清"状态
+  if (currentCustomer.value?.id === 'customer-walk-in' && billingStore.paymentStatus !== 'paid') {
+    MessagePlugin.warning('散客订单必须选择"全部付清"状态')
+    return
+  }
 
   // 根据付款金额设置支付状态
   if (paidAmount.value >= cartTotal.value) {

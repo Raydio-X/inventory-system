@@ -18,19 +18,20 @@
       <div class="customer-left">
         <t-icon name="user" class="customer-icon" />
         <div class="customer-info">
-          <span v-if="currentCustomer" class="customer-name">{{ currentCustomer.name }}</span>
+          <span v-if="currentCustomer === null" class="customer-placeholder">请选择客户</span>
+          <span v-else-if="currentCustomer" class="customer-name">{{ currentCustomer.name }}</span>
           <span v-else class="customer-name walk-in">散客</span>
           <span v-if="currentCustomer" class="customer-phone">{{ currentCustomer.phone }}</span>
         </div>
       </div>
       <div class="customer-right">
-        <span class="customer-change">修改</span>
+        <span class="customer-change">{{ currentCustomer === null ? '选择' : '修改' }}</span>
         <t-icon name="chevron-right" class="customer-arrow" />
       </div>
     </div>
 
     <!-- 客户欠款提示 -->
-    <div v-if="currentCustomer && customerTotalDebt > 0" class="debt-warning" @click="showDebtHistory = true">
+    <div v-if="currentCustomer && currentCustomer?.id !== 'customer-walk-in' && customerTotalDebt > 0" class="debt-warning" @click="showDebtHistory = true">
       <div class="debt-warning-left">
         <t-icon name="error-circle" class="debt-warning-icon" />
         <span class="debt-warning-text">累计欠款</span>
@@ -134,22 +135,22 @@
       </div>
       <div class="payment-tabs">
         <div
-          :class="['pay-tab', { active: paymentStatus === 'unpaid', 'tab-unpaid': paymentStatus === 'unpaid' }]"
-          @click="changePaymentStatus('unpaid')"
+          :class="['pay-tab', { active: paymentStatus === 'unpaid', 'tab-unpaid': paymentStatus === 'unpaid', disabled: !currentCustomer || currentCustomer?.id === 'customer-walk-in' }]"
+          @click="(!currentCustomer || currentCustomer?.id === 'customer-walk-in') ? null : changePaymentStatus('unpaid')"
         >
           <t-icon name="close-circle" class="tab-icon" />
           <span>未付款</span>
         </div>
         <div
-          :class="['pay-tab', { active: paymentStatus === 'partial', 'tab-partial': paymentStatus === 'partial' }]"
-          @click="changePaymentStatus('partial')"
+          :class="['pay-tab', { active: paymentStatus === 'partial', 'tab-partial': paymentStatus === 'partial', disabled: !currentCustomer || currentCustomer?.id === 'customer-walk-in' }]"
+          @click="(!currentCustomer || currentCustomer?.id === 'customer-walk-in') ? null : changePaymentStatus('partial')"
         >
           <t-icon name="time" class="tab-icon" />
           <span>部分付款</span>
         </div>
         <div
-          :class="['pay-tab', { active: paymentStatus === 'paid', 'tab-paid': paymentStatus === 'paid' }]"
-          @click="changePaymentStatus('paid')"
+          :class="['pay-tab', { active: paymentStatus === 'paid', 'tab-paid': paymentStatus === 'paid', disabled: !currentCustomer }]"
+          @click="!currentCustomer ? null : changePaymentStatus('paid')"
         >
           <t-icon name="check-circle" class="tab-icon" />
           <span>全部付清</span>
@@ -237,8 +238,8 @@
         <div class="popup-list">
           <!-- 散客选项 -->
           <div
-            :class="['popup-customer-item', 'walk-in-item', { selected: !currentCustomer }]"
-            @click="selectCustomer(null)"
+            :class="['popup-customer-item', 'walk-in-item', { selected: currentCustomer?.id === 'customer-walk-in' }]"
+            @click="selectWalkInCustomer"
           >
             <div class="popup-customer-avatar walk-in-avatar">
               <t-icon name="user" />
@@ -247,7 +248,7 @@
               <span class="popup-customer-name">散客</span>
               <span class="popup-customer-phone">无需选择客户</span>
             </div>
-            <div v-if="!currentCustomer" class="check-icon">
+            <div v-if="currentCustomer?.id === 'customer-walk-in'" class="check-icon">
               <t-icon name="check-circle" />
             </div>
             <div v-else class="check-placeholder"></div>
@@ -360,7 +361,9 @@
           </div>
           <div class="checkout-row">
             <span class="checkout-label">客户</span>
-            <span class="checkout-value">{{ currentCustomer ? currentCustomer.name : '散客' }}</span>
+            <span class="checkout-value">
+              {{ currentCustomer === null ? '未选择' : currentCustomer?.id === 'customer-walk-in' ? '散客' : currentCustomer?.name }}
+            </span>
           </div>
           <div class="checkout-row">
             <span class="checkout-label">付款状态</span>
@@ -472,15 +475,29 @@ watch(() => billingStore.partialPaidAmount, (val) => {
 
 // 客户欠款
 const customerTotalDebt = computed(() => {
-  if (!currentCustomer.value?.id) return 0
+  if (!currentCustomer.value || currentCustomer.value?.id === 'customer-walk-in' || !currentCustomer.value?.id) return 0
   return debtStore.getCustomerTotalDebt(currentCustomer.value.id)
 })
 
 // 客户欠款历史
 const customerDebtHistory = computed(() => {
-  if (!currentCustomer.value?.id) return []
+  if (!currentCustomer.value || currentCustomer.value?.id === 'customer-walk-in' || !currentCustomer.value?.id) return []
   return debtStore.getCustomerDebts(currentCustomer.value.id)
 })
+
+// 监听客户变化，散客自动设置支付状态为已结清
+watch(currentCustomer, (customer) => {
+  if (customer?.id === 'customer-walk-in') {
+    // 散客订单自动设置为已结清
+    if (paymentStatus.value !== 'paid') {
+      billingStore.setPaymentStatus('paid')
+      MessagePlugin.info('散客订单已自动设置为"全部付清"')
+    }
+  } else if (customer === null) {
+    // 未选择客户，提示用户选择
+    // 不自动设置支付状态
+  }
+}, { immediate: true })
 
 // 剩余欠款
 const remainDebt = computed(() => {
@@ -500,9 +517,12 @@ const openCustomerDialog = async () => {
 }
 
 const filteredCustomers = computed(() => {
-  if (!customerKeyword.value) return customers.value
+  // 过滤掉散客客户，因为已经单独显示在顶部
+  let filteredList = customers.value.filter(c => c.id !== 'customer-walk-in')
+
+  if (!customerKeyword.value) return filteredList
   const kw = customerKeyword.value.toLowerCase()
-  return customers.value.filter(c =>
+  return filteredList.filter(c =>
     c.name.toLowerCase().includes(kw) || (c.phone && c.phone.includes(kw))
   )
 })
@@ -521,6 +541,18 @@ watch(roundOff, (val) => {
 
 // 支付状态变更
 const changePaymentStatus = (status) => {
+  // 未选择客户时提示选择客户
+  if (currentCustomer.value === null) {
+    MessagePlugin.warning('请先选择客户或散客')
+    return
+  }
+
+  // 散客（id为'customer-walk-in'）只能选择"已结清"状态
+  if (currentCustomer.value?.id === 'customer-walk-in' && status !== 'paid') {
+    MessagePlugin.warning('散客订单必须选择"全部付清"状态')
+    return
+  }
+
   if (status === 'partial') {
     paidInput.value = 0
   } else {
@@ -550,6 +582,31 @@ watch(paidInput, (val) => {
 const selectCustomer = (customer) => {
   billingStore.setCurrentCustomer(customer)
   showCustomer.value = false
+
+  // 如果选择散客（id为'customer-walk-in'），自动设置为已结清状态
+  if (customer?.id === 'customer-walk-in') {
+    billingStore.setPaymentStatus('paid')
+    MessagePlugin.info('散客订单已自动设置为"全部付清"')
+  }
+}
+
+// 选择散客客户
+const selectWalkInCustomer = async () => {
+  try {
+    // 从后端获取或创建散客客户
+    const walkInCustomer = {
+      id: 'customer-walk-in',
+      name: '散客',
+      phone: null,
+      address: null,
+      remark: '默认散客客户'
+    }
+
+    selectCustomer(walkInCustomer)
+  } catch (error) {
+    console.error('选择散客失败:', error)
+    MessagePlugin.error('选择散客失败')
+  }
 }
 
 // 格式化金额
@@ -620,6 +677,18 @@ const doConfirm = () => {
 
 // 结算（先显示确认弹窗）
 const goToCheckout = () => {
+  // 未选择客户时提示选择客户
+  if (currentCustomer.value === null) {
+    MessagePlugin.warning('请先选择客户或散客')
+    return
+  }
+
+  // 散客订单验证：必须选择"已结清"状态
+  if (currentCustomer.value?.id === 'customer-walk-in' && paymentStatus.value !== 'paid') {
+    MessagePlugin.warning('散客订单必须选择"全部付清"状态')
+    return
+  }
+
   // 验证部分付款金额
   if (paymentStatus.value === 'partial') {
     const paid = Number(paidInput.value) || 0
@@ -1157,6 +1226,12 @@ const goBack = () => {
         &.active {
           font-weight: 600;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        &.disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+          pointer-events: none;
         }
       }
     }

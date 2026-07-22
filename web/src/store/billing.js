@@ -211,6 +211,11 @@ export const useBillingStore = defineStore('billing', () => {
 
   // 创建销售单（调用后端API，事务写入数据库）
   const createSalesOrder = async () => {
+    // 验证客户选择：必须选择客户或散客
+    if (currentCustomer.value === null) {
+      throw new Error('请先选择客户或散客')
+    }
+
     const paidAmount = paymentStatus.value === 'paid' ? cartTotal.value
       : paymentStatus.value === 'partial' ? partialPaidAmount.value
       : 0
@@ -218,7 +223,8 @@ export const useBillingStore = defineStore('billing', () => {
     const debtAmount = Math.round((cartTotal.value - paidAmount) * 100) / 100
 
     // 优惠金额 = 原价总额 - 折后总额
-    const discountAmount = Math.round((cartTotalOriginal.value - cartTotal.value) * 100) / 100
+    // 使用 Number 确保返回标准数值，避免精度问题
+    const discountAmount = Number(Math.round((cartTotalOriginal.value - cartTotal.value) * 100) / 100)
 
     // 根据付款状态确定订单状态
     let orderStatus = 'settled'
@@ -243,10 +249,10 @@ export const useBillingStore = defineStore('billing', () => {
         price: item.price,
         costPrice: item.costPrice || 0
       })),
-      totalAmount: cartTotal.value,
-      paidAmount,
-      debtAmount,
-      discount: discountAmount,
+      totalAmount: Number(cartTotal.value.toFixed(2)),
+      paidAmount: Number(paidAmount.toFixed(2)),
+      debtAmount: Number(debtAmount.toFixed(2)),
+      discount: Number(discountAmount.toFixed(2)),
       paymentMethod: 'cash',
       status: orderStatus,
       remark: ''
