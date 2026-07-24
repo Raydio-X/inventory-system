@@ -21,9 +21,9 @@
           <div class="name">{{ customer?.name }}</div>
           <div class="phone">{{ customer?.phone }}</div>
         </div>
-        <div class="action-btn" @click="goToBilling">
-          <t-icon name="add" />
-          <span>开单</span>
+        <div class="action-btn" @click="showReconcile">
+          <t-icon name="check-circle" />
+          <span>对账</span>
         </div>
       </div>
       <div class="card-stats">
@@ -225,6 +225,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useCustomerStore } from '@/store/customer'
 import { useBillingStore } from '@/store/billing'
 import { MessagePlugin } from 'tdesign-vue-next'
+import api from '@/utils/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -367,6 +368,11 @@ const formatDate = (date) => {
 const goToBilling = () => {
   billingStore.setCurrentCustomer(customer.value)
   router.push('/billing')
+}
+
+// ==================== 对账功能 ====================
+const showReconcile = () => {
+  router.push(`/customers/${customerId.value}/reconcile`)
 }
 
 // 跳转到订单编辑页面

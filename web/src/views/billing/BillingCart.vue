@@ -130,8 +130,10 @@
     <!-- 支付状态 -->
     <div v-if="cartItems.length > 0" class="payment-section">
       <div class="section-header">
-        <t-icon name="wallet" class="section-icon" />
-        <span class="section-title">付款状态</span>
+        <div class="section-title">
+          <t-icon name="wallet" />
+          <span>付款状态</span>
+        </div>
       </div>
       <div class="payment-tabs">
         <div
@@ -1163,21 +1165,20 @@ const goBack = () => {
     box-shadow: $shadow-sm;
 
     .section-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
       margin-bottom: 12px;
 
-      .section-icon {
-        font-size: 16px;
-        color: $primary-color;
-        display: inline-block;
-        vertical-align: middle;
-      }
       .section-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
         font-size: 14px;
         font-weight: 600;
         color: $text-primary;
+
+        .t-icon {
+          font-size: 16px;
+          color: $primary-color;
+        }
       }
     }
 

@@ -58,9 +58,31 @@
             <span class="order-label">订单金额</span>
             <span class="order-value">¥{{ formatAmount(order.totalAmount) }}</span>
           </div>
-          <div class="order-row">
-            <span class="order-label">已付款</span>
-            <span class="order-value paid">¥{{ formatAmount(order.paidAmount) }}</span>
+          <div class="order-row editable-row" @click="startEditPaid(order)">
+            <span class="order-label">
+              已付款
+              <t-icon name="edit" class="edit-icon" />
+            </span>
+            <div class="editable-value">
+              <template v-if="editingOrderId === order.id">
+                <span class="form-prefix">¥</span>
+                <input
+                  ref="paidInputRef"
+                  v-model.number="editingPaidAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  :max="order.totalAmount"
+                  class="paid-input"
+                  @keyup.enter="confirmEditPaid(order)"
+                  @blur="confirmEditPaid(order)"
+                  @click.stop
+                />
+              </template>
+              <template v-else>
+                <span class="order-value paid">¥{{ formatAmount(order.paidAmount) }}</span>
+              </template>
+            </div>
           </div>
           <div class="order-row highlight">
             <span class="order-label">欠款金额</span>
@@ -149,10 +171,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useDebtStore } from '@/store/debt'
+import api from '@/utils/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -195,6 +218,12 @@ const receiveAmount = ref(0)
 // 展开状态
 const expandedOrders = ref({})
 
+// 编辑已付款金额状态
+const editingOrderId = ref(null)
+const editingPaidAmount = ref(0)
+const paidInputRef = ref(null)
+const isSaving = ref(false)
+
 const toggleOrder = (orderId) => {
   expandedOrders.value[orderId] = !expandedOrders.value[orderId]
 }
@@ -220,6 +249,63 @@ const formatDate = (date) => {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+// 开始编辑已付款金额
+const startEditPaid = async (order) => {
+  editingOrderId.value = order.id
+  editingPaidAmount.value = Number(order.paidAmount) || 0
+  await nextTick()
+  // 聚焦输入框
+  const input = document.querySelector('.paid-input')
+  if (input) {
+    input.focus()
+    input.select()
+  }
+}
+
+// 确认编辑已付款金额
+const confirmEditPaid = async (order) => {
+  if (isSaving.value) return
+  if (editingOrderId.value !== order.id) return
+
+  const newPaidAmount = Number(editingPaidAmount.value)
+  const oldPaidAmount = Number(order.paidAmount)
+
+  // 数值验证
+  if (isNaN(newPaidAmount) || newPaidAmount < 0) {
+    MessagePlugin.warning('已付款金额不能为负数')
+    editingOrderId.value = null
+    return
+  }
+
+  if (newPaidAmount > Number(order.totalAmount)) {
+    MessagePlugin.warning('已付款金额不能超过订单总金额')
+    editingOrderId.value = null
+    return
+  }
+
+  // 如果没有变化，直接退出编辑
+  if (Math.abs(newPaidAmount - oldPaidAmount) < 0.001) {
+    editingOrderId.value = null
+    return
+  }
+
+  isSaving.value = true
+  try {
+    await api.put(`/debt/orders/${order.id}/paid-amount`, {
+      paidAmount: Number(newPaidAmount.toFixed(2))
+    })
+    MessagePlugin.success('已付款金额更新成功')
+    editingOrderId.value = null
+
+    // 刷新详情数据（包含利润数据会通过后端重新计算）
+    detailData.value = await debtStore.fetchCustomerDebtDetail(customerId)
+  } catch (e) {
+    MessagePlugin.error(e.response?.data?.message || e.message || '更新失败')
+  } finally {
+    isSaving.value = false
+  }
 }
 
 const showReceivePopup = (order) => {
@@ -477,6 +563,58 @@ onMounted(async () => {
             padding-top: 6px;
             margin-top: 4px;
             border-top: 1px dashed $border-lighter;
+          }
+
+          &.editable-row {
+            cursor: pointer;
+            padding: 6px 0;
+
+            .order-label {
+              display: flex;
+              align-items: center;
+              gap: 4px;
+
+              .edit-icon {
+                font-size: 12px;
+                color: $primary-color;
+                opacity: 0.5;
+              }
+            }
+
+            .editable-value {
+              display: flex;
+              align-items: center;
+              gap: 4px;
+
+              .form-prefix {
+                font-size: 13px;
+                color: #38A169;
+                font-weight: 500;
+              }
+
+              .paid-input {
+                width: 80px;
+                border: 1px solid $primary-color;
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 14px;
+                font-weight: 600;
+                color: $text-primary;
+                outline: none;
+                background: white;
+                text-align: right;
+
+                &:focus {
+                  border-color: $primary-color;
+                  box-shadow: 0 0 0 2px rgba($primary-color, 0.15);
+                }
+              }
+            }
+
+            &:active:not(.editing) {
+              background: rgba($primary-color, 0.05);
+              border-radius: 4px;
+            }
           }
         }
       }

@@ -113,10 +113,10 @@ const filteredProducts = computed(() => {
 
   if (activeCategory.value !== 'all') {
     products = products.filter(p =>
-      p.categoryId?.toString() === activeCategory.value ||
+      String(p.category || p.categoryId) === activeCategory.value ||
       productStore.categories.find(c =>
         c.id.toString() === activeCategory.value &&
-        c.children?.some(sc => sc.id === p.categoryId)
+        c.children?.some(sc => String(sc.id) === String(p.category || p.categoryId))
       )
     )
   }

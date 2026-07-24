@@ -92,6 +92,12 @@ const routes = [
     meta: { title: '客户详情', hideTabBar: true }
   },
   {
+    path: '/customers/:customerId/reconcile',
+    name: 'CustomerReconcile',
+    component: () => import('@/views/customer/CustomerReconcile.vue'),
+    meta: { title: '对账', hideTabBar: true }
+  },
+  {
     path: '/customers/:customerId/order/:orderId/edit',
     name: 'OrderEdit',
     component: () => import('@/views/customer/OrderEdit.vue'),

@@ -215,7 +215,7 @@ const profitRateClass = computed(() => {
 // 方法
 const getCategoryName = (categoryId) => {
   if (!categoryId) return '未分类'
-  const category = productStore.categories.find(c => c.id === categoryId)
+  const category = productStore.categories.find(c => String(c.id) === String(categoryId))
   return category?.name || '未分类'
 }
 

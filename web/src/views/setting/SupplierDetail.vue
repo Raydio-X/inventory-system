@@ -852,6 +852,8 @@ onMounted(() => {
               background: rgba(255, 152, 0, 0.1);
               color: #ff9800;
               margin-left: 6px;
+              white-space: nowrap;
+              flex-shrink: 0;
             }
 
             .expand-icon {

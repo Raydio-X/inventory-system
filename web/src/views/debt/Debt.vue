@@ -118,9 +118,23 @@
                   <span class="info-label">订单</span>
                   <span class="info-value">¥{{ formatAmount(order.totalAmount) }}</span>
                 </div>
-                <div class="order-info-item">
+                <div class="order-info-item editable-paid" @click.stop="startEditPaid(order, $event)">
                   <span class="info-label">已付</span>
-                  <span class="info-value paid">¥{{ formatAmount(order.paidAmount) }}</span>
+                  <template v-if="editingOrderId === order.id">
+                    <span class="edit-prefix">¥</span>
+                    <input
+                      v-model.number="editingPaidAmount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      :max="order.totalAmount"
+                      class="edit-paid-input"
+                      @keyup.enter="confirmEditPaid(order)"
+                      @blur="confirmEditPaid(order)"
+                      @click.stop
+                    />
+                  </template>
+                  <span v-else class="info-value paid">¥{{ formatAmount(order.paidAmount) }}</span>
                 </div>
                 <div class="order-info-item">
                   <span class="info-label">欠款</span>
@@ -175,10 +189,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useDebtStore } from '@/store/debt'
+import api from '@/utils/api'
 
 const router = useRouter()
 const debtStore = useDebtStore()
@@ -319,6 +334,62 @@ const confirmReceive = async () => {
     closeReceivePopup()
   } catch (e) {
     MessagePlugin.error(e.message || '收款失败')
+  }
+}
+
+// 编辑已付款金额
+const editingOrderId = ref(null)
+const editingPaidAmount = ref(0)
+const isSavingPaid = ref(false)
+
+const startEditPaid = async (order, event) => {
+  editingOrderId.value = order.id
+  editingPaidAmount.value = Number(order.paidAmount) || 0
+  await nextTick()
+  const input = event?.target?.parentElement?.querySelector('.edit-paid-input')
+  if (input) {
+    input.focus()
+    input.select()
+  }
+}
+
+const confirmEditPaid = async (order) => {
+  if (isSavingPaid.value) return
+  if (editingOrderId.value !== order.id) return
+
+  const newPaidAmount = Number(editingPaidAmount.value)
+  const oldPaidAmount = Number(order.paidAmount)
+
+  if (isNaN(newPaidAmount) || newPaidAmount < 0) {
+    MessagePlugin.warning('已付款金额不能为负数')
+    editingOrderId.value = null
+    return
+  }
+
+  if (newPaidAmount > Number(order.totalAmount)) {
+    MessagePlugin.warning('已付款金额不能超过订单总金额')
+    editingOrderId.value = null
+    return
+  }
+
+  if (Math.abs(newPaidAmount - oldPaidAmount) < 0.001) {
+    editingOrderId.value = null
+    return
+  }
+
+  isSavingPaid.value = true
+  try {
+    await api.put(`/debt/orders/${order.id}/paid-amount`, {
+      paidAmount: Number(newPaidAmount.toFixed(2))
+    })
+    MessagePlugin.success('已付款金额更新成功')
+    editingOrderId.value = null
+    // 刷新欠款列表
+    await debtStore.fetchDebtCustomers()
+  } catch (e) {
+    MessagePlugin.error(e.response?.data?.message || e.message || '更新失败')
+  } finally {
+    isSavingPaid.value = false
   }
 }
 
@@ -674,6 +745,38 @@ onMounted(() => {
 
                 &.paid { color: #38A169; }
                 &.debt { color: $error-color; }
+              }
+            }
+
+            .editable-paid {
+              cursor: pointer;
+
+              .edit-prefix {
+                font-size: 12px;
+                color: #38A169;
+                font-weight: 500;
+              }
+
+              .edit-paid-input {
+                width: 60px;
+                border: 1px solid $primary-color;
+                border-radius: 4px;
+                padding: 1px 4px;
+                font-size: 13px;
+                font-weight: 600;
+                color: $text-primary;
+                outline: none;
+                background: white;
+                text-align: right;
+
+                &:focus {
+                  border-color: $primary-color;
+                  box-shadow: 0 0 0 2px rgba($primary-color, 0.15);
+                }
+              }
+
+              &:active {
+                opacity: 0.8;
               }
             }
           }

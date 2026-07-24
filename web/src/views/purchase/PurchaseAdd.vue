@@ -822,17 +822,20 @@ onMounted(async () => {
       font-size: 20px;
       color: #d9d9d9;
       transition: color 0.2s;
+      flex-shrink: 0;
     }
 
     span {
       font-size: 14px;
       color: #333;
+      white-space: nowrap;
     }
 
     .type-hint {
       font-size: 12px;
       color: #999;
       margin-left: auto;
+      white-space: nowrap;
     }
 
     &.active {

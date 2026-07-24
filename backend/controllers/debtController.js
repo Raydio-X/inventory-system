@@ -177,8 +177,104 @@ const recordPayment = async (req, res, next) => {
   }
 };
 
+/**
+ * 更新订单已付款金额（直接设置，而非追加）
+ */
+const updatePaidAmount = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { paidAmount } = req.body;
+
+    // 数据验证
+    if (paidAmount === undefined || paidAmount === null || isNaN(paidAmount)) {
+      throw new ValidationError('已付款金额格式错误');
+    }
+
+    const newPaidAmount = Number(paidAmount);
+    if (newPaidAmount < 0) {
+      throw new ValidationError('已付款金额不能为负数');
+    }
+
+    // 获取订单信息
+    const orders = await dataStore.query(
+      'SELECT id, order_no, total_amount, paid_amount, debt_amount, customer_id FROM sales_orders WHERE id = ?',
+      [orderId]
+    );
+
+    if (orders.length === 0) {
+      throw new NotFoundError('订单不存在');
+    }
+
+    const order = orders[0];
+    const totalAmount = Number(order.total_amount);
+
+    // 验证：已付款金额不能超过订单总金额
+    if (newPaidAmount > totalAmount) {
+      throw new ValidationError('已付款金额不能超过订单总金额');
+    }
+
+    const oldPaidAmount = Number(order.paid_amount);
+    const oldDebtAmount = Number(order.debt_amount);
+    const newDebtAmount = Math.round((totalAmount - newPaidAmount) * 100) / 100;
+    const newStatus = newDebtAmount <= 0 ? 'paid' : (newPaidAmount > 0 ? 'partial' : 'unpaid');
+    const paidDiff = newPaidAmount - oldPaidAmount; // 正值=多付，负值=少付
+
+    // 更新订单
+    await dataStore.query(
+      `UPDATE sales_orders SET paid_amount = ?, debt_amount = ?, status = ? WHERE id = ?`,
+      [newPaidAmount, newDebtAmount, newStatus, orderId]
+    );
+
+    // 更新客户欠款统计
+    if (order.customer_id) {
+      // 差额部分需要从客户total_debt中扣除（正值减少欠款，负值增加欠款）
+      await dataStore.query(
+        `UPDATE customers SET total_debt = GREATEST(0, total_debt - ?) WHERE id = ?`,
+        [paidDiff, order.customer_id]
+      );
+    }
+
+    // 更新账目记录
+    // 如果有差额，记录一笔调整
+    if (Math.abs(paidDiff) > 0.001) {
+      const accId = 'acc-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
+
+      if (paidDiff > 0) {
+        // 多付了：记录收入
+        await dataStore.query(
+          `INSERT INTO account_records (id, type, category, amount, order_id, order_no, remark)
+           VALUES (?, 'income', 'debt_payment', ?, ?, ?, '欠款金额调整（增加付款）')`,
+          [accId, Math.abs(paidDiff), orderId, order.order_no]
+        );
+      } else {
+        // 少付了：记录支出（冲减之前的收入）
+        await dataStore.query(
+          `INSERT INTO account_records (id, type, category, amount, order_id, order_no, remark)
+           VALUES (?, 'expense', 'debt_adjustment', ?, ?, ?, '欠款金额调整（减少付款）')`,
+          [accId, Math.abs(paidDiff), orderId, order.order_no]
+        );
+      }
+    }
+
+    // 返回更新后的数据
+    const updatedOrders = await dataStore.query(
+      'SELECT id, order_no, total_amount, paid_amount, debt_amount, status FROM sales_orders WHERE id = ?',
+      [orderId]
+    );
+
+    res.json({
+      success: true,
+      data: updatedOrders[0],
+      message: '已付款金额更新成功'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getDebtCustomers,
   getDebtCustomerDetail,
-  recordPayment
+  recordPayment,
+  updatePaidAmount
 };

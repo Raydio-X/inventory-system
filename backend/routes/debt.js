@@ -57,4 +57,17 @@ router.post('/customers/:customerId/payments',
   debtController.recordPayment
 );
 
+/**
+ * 更新订单已付款金额
+ * PUT /api/debt/orders/:orderId/paid-amount
+ */
+router.put('/orders/:orderId/paid-amount',
+  [
+    param('orderId').notEmpty().withMessage('订单ID不能为空'),
+    body('paidAmount').isFloat({ min: 0 }).withMessage('已付款金额格式错误')
+  ],
+  validate,
+  debtController.updatePaidAmount
+);
+
 module.exports = router;
