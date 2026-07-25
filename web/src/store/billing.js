@@ -65,6 +65,10 @@ export const useBillingStore = defineStore('billing', () => {
   // 退货单列表
   const returnOrders = ref([])
 
+  // 退货购物车数据（跨页面共享）
+  const returnCartItems = ref([])
+  const returnCustomer = ref(null)
+
   // 监听购物车状态变化，自动保存到 localStorage
   watch(
     [cartItems, currentCustomer, orderDiscount, roundOffAmount, paymentStatus, partialPaidAmount],
@@ -379,6 +383,26 @@ export const useBillingStore = defineStore('billing', () => {
     }
   }
 
+  // 退货购物车：添加商品
+  const addToReturnCart = (items, customer) => {
+    returnCartItems.value = items
+    returnCustomer.value = customer
+  }
+
+  // 退货购物车：移除单个商品
+  const removeFromReturnCart = (skuId) => {
+    const index = returnCartItems.value.findIndex(i => i.skuId === skuId)
+    if (index !== -1) {
+      returnCartItems.value.splice(index, 1)
+    }
+  }
+
+  // 退货购物车：清空
+  const clearReturnCart = () => {
+    returnCartItems.value = []
+    returnCustomer.value = null
+  }
+
   return {
     cartItems,
     currentCustomer,
@@ -388,6 +412,8 @@ export const useBillingStore = defineStore('billing', () => {
     partialPaidAmount,
     salesOrders,
     returnOrders,
+    returnCartItems,
+    returnCustomer,
     cartItemCount,
     cartTotalOriginal,
     cartTotal,
@@ -412,6 +438,9 @@ export const useBillingStore = defineStore('billing', () => {
     fetchReturnOrders,
     updateSalesOrder,
     deleteSalesOrder,
-    initData
+    initData,
+    addToReturnCart,
+    removeFromReturnCart,
+    clearReturnCart
   }
 })

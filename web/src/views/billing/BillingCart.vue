@@ -70,7 +70,7 @@
                 @input="updateProductPrice(group.productId, Number($event.target.value) || 0)"
               />
             </div>
-            <span class="group-spec-count">{{ group.items.length }}个规格</span>
+            <span class="group-spec-count">{{ getGroupQuantity(group) }}件</span>
           </div>
         </div>
         <!-- 规格明细列表 -->
@@ -447,6 +447,11 @@ const updateProductPrice = (productId, newPrice) => {
 const getProductPrice = (productId) => {
   const group = groupedCartItems.value.find(g => g.productId === productId)
   return group && group.items.length > 0 ? group.items[0].price : 0
+}
+
+// 获取商品组的总数量
+const getGroupQuantity = (group) => {
+  return group.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
 }
 
 const discountPercent = ref(100)

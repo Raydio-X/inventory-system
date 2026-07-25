@@ -93,15 +93,35 @@
         <!-- 展开区域：订单商品明细 -->
         <div v-if="expandedOrders[order.id]" class="order-items">
           <div v-if="getOrderItems(order).length === 0" class="items-empty">暂无商品明细</div>
-          <div v-for="(item, idx) in getOrderItems(order)" :key="idx" class="item-row">
-            <div class="item-main">
-              <span class="item-name">{{ item.productName }}</span>
-              <span class="item-spec">{{ item.color }}/{{ item.size }}</span>
-            </div>
-            <div class="item-nums">
-              <span class="item-price">¥{{ formatAmount(item.price) }}</span>
-              <span class="item-qty">×{{ item.quantity }}</span>
-              <span class="item-subtotal">¥{{ formatAmount(item.price * item.quantity) }}</span>
+
+          <!-- 商品列表表头 -->
+          <div class="detail-table-header">
+            <span class="col-name">商品</span>
+            <span class="col-spec">规格</span>
+            <span class="col-price">单价</span>
+            <span class="col-qty">数量</span>
+            <span class="col-sub">小计</span>
+          </div>
+
+          <!-- 商品列表 -->
+          <div class="detail-items">
+            <div v-for="group in groupItemsByProduct(getOrderItems(order))" :key="group.productName" class="product-group">
+              <!-- 商品名称行 -->
+              <div class="product-group-header">
+                <span class="group-name">{{ group.productName }}</span>
+                <span class="group-count">{{ group.items.length }}个规格</span>
+              </div>
+              <!-- 规格明细 -->
+              <div v-for="item in group.items" :key="item.skuId || `${item.color}-${item.size}`" class="detail-item">
+                <span class="col-name"></span>
+                <span class="col-spec">
+                  <span class="sku-tag">{{ item.color || '-' }}</span>
+                  <span class="sku-tag">{{ item.size || '-' }}</span>
+                </span>
+                <span class="col-price">¥{{ item.price }}</span>
+                <span class="col-qty">{{ item.quantity }}</span>
+                <span class="col-sub">¥{{ formatAmount(item.price * item.quantity) }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -175,11 +195,13 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useDebtStore } from '@/store/debt'
+import { useBillingStore } from '@/store/billing'
 import api from '@/utils/api'
 
 const router = useRouter()
 const route = useRoute()
 const debtStore = useDebtStore()
+const billingStore = useBillingStore()
 
 const customerId = route.params.customerId
 
@@ -231,6 +253,60 @@ const toggleOrder = (orderId) => {
 // 获取订单商品明细
 const getOrderItems = (debtOrder) => {
   return debtOrder.items || []
+}
+
+// 尺码排序辅助函数
+const getSizeOrder = (size) => {
+  if (!size) return 999
+  const s = String(size).toUpperCase().trim()
+  // 常见尺码映射
+  const sizeMap = {
+    'XS': 1, 'XSMALL': 1,
+    'S': 2, 'SMALL': 2,
+    'M': 3, 'MEDIUM': 3,
+    'L': 4, 'LARGE': 4,
+    'XL': 5, 'X-LARGE': 5,
+    'XXL': 6, '2XL': 6, 'XX-LARGE': 6,
+    'XXXL': 7, '3XL': 7, 'XXX-LARGE': 7,
+    '4XL': 8, 'XXXXL': 8,
+    '5XL': 9
+  }
+  if (sizeMap[s] !== undefined) return sizeMap[s]
+  // 数字尺码（如 36, 38, 40 等）
+  const num = parseInt(s)
+  if (!isNaN(num)) return num
+  // 其他情况按字符串排序
+  return 999
+}
+
+// 按商品名称分组订单项，并按颜色+尺码排序
+const groupItemsByProduct = (items) => {
+  if (!items || items.length === 0) return []
+  const groups = {}
+  items.forEach(item => {
+    const name = item.productName || '未知商品'
+    if (!groups[name]) {
+      groups[name] = {
+        productName: name,
+        items: []
+      }
+    }
+    groups[name].items.push(item)
+  })
+  // 对每个分组内的规格进行排序：先按颜色，再按尺码升序
+  Object.values(groups).forEach(group => {
+    group.items.sort((a, b) => {
+      const colorA = (a.color || '').toString().trim()
+      const colorB = (b.color || '').toString().trim()
+      // 先按颜色排序
+      if (colorA !== colorB) {
+        return colorA.localeCompare(colorB, 'zh-CN')
+      }
+      // 同颜色按尺码升序
+      return getSizeOrder(a.size) - getSizeOrder(b.size)
+    })
+  })
+  return Object.values(groups)
 }
 
 const canReceive = computed(() =>
@@ -301,6 +377,9 @@ const confirmEditPaid = async (order) => {
 
     // 刷新详情数据（包含利润数据会通过后端重新计算）
     detailData.value = await debtStore.fetchCustomerDebtDetail(customerId)
+
+    // 刷新订单数据，确保其他页面（如客户详情页）数据同步
+    await billingStore.fetchSalesOrders()
   } catch (e) {
     MessagePlugin.error(e.response?.data?.message || e.message || '更新失败')
   } finally {
@@ -575,9 +654,11 @@ onMounted(async () => {
               gap: 4px;
 
               .edit-icon {
-                font-size: 12px;
+                font-size: 18px;
                 color: $primary-color;
-                opacity: 0.5;
+                padding: 2px;
+                background: rgba($primary-color, 0.1);
+                border-radius: 4px;
               }
             }
 
@@ -632,48 +713,99 @@ onMounted(async () => {
           padding: 8px 0;
         }
 
-        .item-row {
+        // 商品列表表头
+        .detail-table-header {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          padding: 6px 0;
-          border-bottom: 1px solid $border-lighter;
+          padding: 8px 6px;
+          margin-bottom: 6px;
+          font-size: 11px;
+          color: $text-placeholder;
+          font-weight: 500;
 
-          &:last-child { border-bottom: none; }
+          .col-name { width: 80px; }
+          .col-spec { flex: 1; text-align: center; }
+          .col-price { width: 60px; text-align: right; }
+          .col-qty { width: 40px; text-align: center; }
+          .col-sub { width: 60px; text-align: right; }
+        }
 
-          .item-main {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+        // 商品列表
+        .detail-items {
+          .product-group {
+            margin-bottom: 10px;
 
-            .item-name {
-              font-size: 13px;
-              font-weight: 500;
-              color: $text-primary;
+            &:last-child { margin-bottom: 0; }
+
+            // 商品名称行
+            .product-group-header {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              padding: 6px;
+              background: white;
+              border-radius: 4px;
+              margin-bottom: 4px;
+
+              .group-name {
+                font-size: 13px;
+                font-weight: 600;
+                color: $text-primary;
+              }
+
+              .group-count {
+                font-size: 11px;
+                color: $text-placeholder;
+              }
             }
-            .item-spec {
-              font-size: 11px;
-              color: $text-placeholder;
-            }
-          }
 
-          .item-nums {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            // 规格明细
+            .detail-item {
+              display: flex;
+              align-items: center;
+              padding: 6px;
+              border-bottom: 1px solid rgba(0, 0, 0, 0.04);
 
-            .item-price {
-              font-size: 12px;
-              color: $text-secondary;
-            }
-            .item-qty {
-              font-size: 12px;
-              color: $text-placeholder;
-            }
-            .item-subtotal {
-              font-size: 13px;
-              font-weight: 600;
-              color: $primary-color;
+              &:last-child { border-bottom: none; }
+
+              .col-name { width: 80px; }
+              .col-spec {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                min-width: 0;
+
+                .sku-tag {
+                  flex-shrink: 0;
+                  padding: 2px 6px;
+                  border-radius: 2px;
+                  font-size: 11px;
+                  background: rgba(0, 0, 0, 0.04);
+                  color: $text-secondary;
+                  white-space: nowrap;
+                }
+              }
+              .col-price {
+                width: 60px;
+                text-align: right;
+                font-size: 12px;
+                color: $text-secondary;
+              }
+              .col-qty {
+                width: 40px;
+                text-align: center;
+                font-size: 12px;
+                color: $text-primary;
+              }
+              .col-sub {
+                width: 60px;
+                text-align: right;
+                font-size: 12px;
+                font-weight: 600;
+                color: $primary-color;
+              }
             }
           }
         }

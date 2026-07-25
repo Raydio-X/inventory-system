@@ -62,51 +62,66 @@
         </div>
 
         <div v-else class="items-list">
+          <!-- 按商品分组显示 -->
           <div
-            v-for="(item, index) in order.items"
-            :key="index"
-            class="item-card"
+            v-for="group in groupedItems"
+            :key="group.productId"
+            class="product-group"
           >
-            <div class="item-header">
-              <span class="item-name">{{ item.productName }}</span>
-              <t-icon
-                name="close-circle-filled"
-                class="item-delete-icon"
-                @click="removeItem(index)"
-              />
-            </div>
-            <div class="item-spec">
-              <span class="spec-tag">{{ item.color }}</span>
-              <span class="spec-tag">{{ item.size }}</span>
-              <span class="spec-stock">库存: {{ item.currentStock }}件</span>
-            </div>
-            <div class="item-row">
-              <div class="item-field">
-                <label class="item-label">采购数量</label>
-                <input
-                  v-model.number="item.quantity"
-                  type="number"
-                  class="item-input"
-                  placeholder="请输入数量"
-                  min="1"
+            <!-- 商品组头部：商品名 + 统一采购价 -->
+            <div class="group-header">
+              <div class="group-top-row">
+                <div class="group-name">{{ group.productName }}</div>
+                <t-icon
+                  name="close-circle-filled"
+                  class="group-delete-icon"
+                  @click="removeGroup(group.productId)"
                 />
               </div>
-              <div class="item-field">
-                <label class="item-label">采购单价</label>
-                <div class="price-wrapper">
-                  <span class="price-prefix">¥</span>
+              <div class="group-price-row">
+                <div class="price-left">
+                  <span class="group-price-label">采购价</span>
+                  <div class="price-input-wrap">
+                    <span class="price-prefix">¥</span>
+                    <input
+                      :value="getProductCostPrice(group.productId)"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="price-input"
+                      @focus="$event.target.select()"
+                      @input="updateProductCostPrice(group.productId, Number($event.target.value) || 0)"
+                    />
+                  </div>
+                </div>
+                <span class="group-spec-count">共{{ getGroupQuantity(group) }}件</span>
+              </div>
+            </div>
+            <!-- 规格明细列表 -->
+            <div
+              v-for="(item, index) in group.items"
+              :key="item.skuId"
+              class="item-card"
+            >
+              <div class="item-spec">
+                <span class="spec-tag">{{ item.color }}</span>
+                <span class="spec-tag">{{ item.size }}</span>
+                <span class="spec-stock">库存: {{ item.currentStock }}件</span>
+              </div>
+              <div class="item-row">
+                <div class="item-field">
+                  <label class="item-label">采购数量</label>
                   <input
-                    v-model.number="item.costPrice"
+                    v-model.number="item.quantity"
                     type="number"
-                    class="item-input price-input"
-                    placeholder="请输入单价"
-                    min="0"
+                    class="item-input"
+                    placeholder="请输入数量"
+                    min="1"
                   />
                 </div>
-              </div>
-              <div class="item-field total-field">
-                <label class="item-label">小计</label>
-                <span class="item-total">¥{{ formatAmount(item.quantity * item.costPrice) }}</span>
+                <div class="item-field total-field">
+                  <span class="item-total">¥{{ formatAmount(item.quantity * item.costPrice) }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -304,6 +319,49 @@ const filteredProducts = computed(() => {
   return products
 })
 
+// 按商品分组采购项
+const groupedItems = computed(() => {
+  const groups = {}
+  order.value.items.forEach(item => {
+    const key = item.productId
+    if (!groups[key]) {
+      groups[key] = {
+        productId: item.productId,
+        productName: item.productName,
+        items: []
+      }
+    }
+    groups[key].items.push(item)
+  })
+  return Object.values(groups)
+})
+
+// 更新商品统一采购价
+const updateProductCostPrice = (productId, newPrice) => {
+  const group = groupedItems.value.find(g => g.productId === productId)
+  if (group) {
+    group.items.forEach(item => {
+      item.costPrice = newPrice
+    })
+  }
+}
+
+// 获取商品当前采购价（取第一个规格的价格）
+const getProductCostPrice = (productId) => {
+  const group = groupedItems.value.find(g => g.productId === productId)
+  return group && group.items.length > 0 ? group.items[0].costPrice : 0
+}
+
+// 获取商品组的总数量
+const getGroupQuantity = (group) => {
+  return group.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
+}
+
+// 移除整个商品组
+const removeGroup = (productId) => {
+  order.value.items = order.value.items.filter(item => item.productId !== productId)
+}
+
 // 判断SKU是否已被选中
 const isSkuSelected = (skuId) => {
   return order.value.items.some(item => item.skuId === skuId)
@@ -328,11 +386,6 @@ const addSkuToItems = (product, sku) => {
       costPrice: null
     })
   }
-}
-
-// 移除采购项
-const removeItem = (index) => {
-  order.value.items.splice(index, 1)
 }
 
 // 格式化金额
@@ -671,123 +724,204 @@ onMounted(async () => {
     flex-direction: column;
     gap: $spacing-md;
 
-    .item-card {
+    // 商品分组
+    .product-group {
       background: #fafafa;
       border-radius: $radius-md;
-      padding: $spacing-md;
       border: 1px solid rgba(0, 0, 0, 0.06);
+      overflow: hidden;
 
-      .item-header {
+      // 分组头部
+      .group-header {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: $spacing-sm;
-
-        .item-name {
-          font-size: $font-md;
-          color: $text-primary;
-          font-weight: 500;
-        }
-
-        .item-delete-icon {
-          font-size: 20px;
-          color: $text-placeholder;
-          cursor: pointer;
-
-          &:hover {
-            color: $error-color;
-          }
-        }
-      }
-
-      .item-spec {
-        display: flex;
-        align-items: center;
+        flex-direction: column;
         gap: $spacing-sm;
-        margin-bottom: $spacing-md;
+        padding: $spacing-md;
+        background: #f5f5f5;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 
-        .spec-tag {
-          padding: 2px 8px;
-          border-radius: 3px;
-          font-size: $font-xs;
-          background: rgba(0, 0, 0, 0.04);
-          color: $text-secondary;
-        }
-
-        .spec-stock {
-          font-size: $font-xs;
-          color: $text-placeholder;
-        }
-      }
-
-      .item-row {
-        display: flex;
-        gap: $spacing-md;
-
-        .item-field {
-          flex: 1;
-
-          .item-label {
-            display: block;
-            font-size: $font-xs;
-            color: $text-secondary;
-            margin-bottom: $spacing-xs;
-          }
-
-          .item-input {
-            width: 100%;
-            height: 36px;
-            padding: $spacing-sm $spacing-md;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-            border-radius: $radius-sm;
-            font-size: $font-sm;
-            color: $text-primary;
-            background: #fff;
-            transition: all 0.3s ease;
-
-            &:focus {
-              border-color: $primary-color;
-              box-shadow: 0 0 0 2px rgba(255, 87, 34, 0.1);
-              outline: none;
-            }
-
-            &::placeholder {
-              color: $text-placeholder;
-              font-size: $font-xs;
-            }
-          }
-
-          .price-wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-
-            .price-prefix {
-              position: absolute;
-              left: $spacing-sm;
-              font-size: $font-xs;
-              color: $warning-color;
-              font-weight: 600;
-            }
-
-            .price-input {
-              padding-left: 24px;
-            }
-          }
-        }
-
-        .total-field {
+        // 顶部行：商品名称 + 删除图标
+        .group-top-row {
           display: flex;
-          flex-direction: column;
-          justify-content: flex-end;
+          align-items: center;
+          justify-content: space-between;
+          gap: $spacing-sm;
 
-          .item-total {
+          .group-name {
+            flex: 1;
             font-size: $font-md;
             color: $text-primary;
             font-weight: 600;
-            text-align: right;
-            height: 36px;
-            line-height: 36px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .group-delete-icon {
+            flex-shrink: 0;
+            font-size: 18px;
+            color: $text-placeholder;
+            cursor: pointer;
+            transition: color 0.2s;
+
+            &:hover {
+              color: $error-color;
+            }
+          }
+        }
+
+        // 底部行：采购价输入 + 数量统计
+        .group-price-row {
+          display: flex;
+          align-items: center;
+          gap: $spacing-sm;
+
+          .price-left {
+            display: flex;
+            align-items: center;
+            gap: $spacing-sm;
+            flex: 1;
+            min-width: 0;
+
+            .group-price-label {
+              flex-shrink: 0;
+              font-size: $font-sm;
+              color: $text-secondary;
+              white-space: nowrap;
+            }
+
+            .price-input-wrap {
+              display: flex;
+              align-items: center;
+              background: #fff;
+              border: 1px solid rgba(0, 0, 0, 0.1);
+              border-radius: $radius-sm;
+              padding: 0 $spacing-sm;
+              height: 32px;
+              min-width: 80px;
+              max-width: 120px;
+
+              .price-prefix {
+                flex-shrink: 0;
+                font-size: $font-sm;
+                color: $text-secondary;
+                margin-right: 2px;
+              }
+
+              .price-input {
+                flex: 1;
+                border: none;
+                outline: none;
+                font-size: $font-md;
+                color: $text-primary;
+                background: transparent;
+                text-align: left;
+                min-width: 0;
+
+                &::placeholder {
+                  color: $text-placeholder;
+                }
+
+                &:focus {
+                  outline: none;
+                }
+
+                // 隐藏数字输入框的箭头
+                &::-webkit-outer-spin-button,
+                &::-webkit-inner-spin-button {
+                  -webkit-appearance: none;
+                  margin: 0;
+                }
+
+                &[type='number'] {
+                  -moz-appearance: textfield;
+                }
+              }
+            }
+          }
+
+          .group-spec-count {
+            flex-shrink: 0;
+            font-size: $font-sm;
+            color: $text-secondary;
+            white-space: nowrap;
+          }
+        }
+      }
+
+      // 规格卡片
+      .item-card {
+        padding: $spacing-md;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        .item-spec {
+          display: flex;
+          align-items: center;
+          gap: $spacing-sm;
+          margin-bottom: $spacing-md;
+
+          .spec-tag {
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: $font-xs;
+            background: rgba(0, 0, 0, 0.04);
+            color: $text-secondary;
+          }
+
+          .spec-stock {
+            font-size: $font-xs;
+            color: $text-placeholder;
+          }
+        }
+
+        .item-row {
+          display: flex;
+          gap: $spacing-md;
+
+          .item-field {
+            flex: 1;
+
+            .item-input {
+              width: 100%;
+              height: 36px;
+              padding: $spacing-sm $spacing-md;
+              border: 1px solid rgba(0, 0, 0, 0.1);
+              border-radius: $radius-sm;
+              font-size: $font-sm;
+              color: $text-primary;
+              background: #fff;
+              transition: all 0.3s ease;
+
+              &:focus {
+                border-color: $primary-color;
+                box-shadow: 0 0 0 2px rgba(255, 87, 34, 0.1);
+                outline: none;
+              }
+
+              &::placeholder {
+                color: $text-placeholder;
+                font-size: $font-xs;
+              }
+            }
+          }
+
+          .total-field {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+
+            .item-total {
+              font-size: $font-md;
+              color: $text-primary;
+              font-weight: 600;
+              text-align: right;
+              height: 36px;
+              line-height: 36px;
+            }
           }
         }
       }

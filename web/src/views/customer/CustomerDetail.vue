@@ -940,6 +940,7 @@ onMounted(() => {
                 gap: 3px;
 
                 .sku-tag {
+                  flex-shrink: 0;
                   padding: 2px 6px;
                   border-radius: 3px;
                   font-size: 12px;

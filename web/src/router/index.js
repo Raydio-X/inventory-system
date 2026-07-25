@@ -50,6 +50,18 @@ const routes = [
     meta: { title: '客户退货' }
   },
   {
+    path: '/return/select/:productId',
+    name: 'ReturnSelect',
+    component: () => import('@/views/return/ReturnSelect.vue'),
+    meta: { title: '选择退货商品', hideTabBar: true }
+  },
+  {
+    path: '/return/cart',
+    name: 'ReturnCart',
+    component: () => import('@/views/return/ReturnCart.vue'),
+    meta: { title: '退货清单', hideTabBar: true }
+  },
+  {
     path: '/records',
     name: 'Records',
     component: () => import('@/views/record/Records.vue'),

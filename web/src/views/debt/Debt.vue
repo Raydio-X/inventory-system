@@ -69,8 +69,8 @@
 
         <!-- 操作按钮 -->
         <div class="card-actions">
-          <div class="action-btn receive-btn" @click.stop="showReceivePopup(customer)">
-            <t-icon name="money-circle" />
+          <div class="action-btn receive-btn" @click.stop="openReceivePopup(customer)">
+            <t-icon name="wealth-1" />
             <span>收款</span>
           </div>
           <div class="action-btn detail-btn" @click.stop="goToDetail(customer.customerId)">
@@ -81,7 +81,7 @@
       </div>
     </div>
 
-    <!-- 收款弹窗 -->
+    <!-- 批量收款弹窗 -->
     <t-dialog
       v-model:visible="showReceivePopupVisible"
       :header="null"
@@ -92,9 +92,9 @@
       :attach="false"
       class="receive-dialog"
     >
-      <div class="receive-popup" v-if="selectedCustomer">
+      <div class="receive-popup" v-if="receiveCustomer">
         <div class="popup-header">
-          <span class="popup-title">收款 - {{ selectedCustomer.customerName }}</span>
+          <span class="popup-title">收款 - {{ receiveCustomer.customerName }}</span>
           <div class="popup-close" @click="closeReceivePopup">
             <t-icon name="close" />
           </div>
@@ -103,78 +103,61 @@
         <div class="popup-body">
           <!-- 欠款订单列表 -->
           <div class="order-list">
+            <!-- 全选行 -->
+            <div class="select-all-row" @click="toggleSelectAll">
+              <t-icon :name="isAllSelected ? 'check-circle-filled' : 'circle'" class="select-icon" :class="{ active: isAllSelected }" />
+              <span class="select-text">全选</span>
+              <span class="select-count">已选{{ selectedOrderIds.length }}笔</span>
+            </div>
+
             <div
-              v-for="order in selectedCustomer.orders"
+              v-for="order in receiveOrders"
               :key="order.id"
-              :class="['order-card', { selected: selectedOrder?.id === order.id }]"
-              @click="selectOrder(order)"
+              class="order-card"
+              :class="{ selected: selectedOrderIds.includes(order.id) }"
+              @click="toggleOrderSelect(order.id)"
             >
-              <div class="order-top">
-                <span class="order-no">{{ order.orderNo }}</span>
-                <span class="order-date">{{ formatDate(order.createdAt) }}</span>
+              <div class="order-left">
+                <t-icon :name="selectedOrderIds.includes(order.id) ? 'check-circle-filled' : 'circle'" class="order-check" :class="{ active: selectedOrderIds.includes(order.id) }" />
               </div>
-              <div class="order-mid">
-                <div class="order-info-item">
-                  <span class="info-label">订单</span>
-                  <span class="info-value">¥{{ formatAmount(order.totalAmount) }}</span>
+              <div class="order-info">
+                <div class="order-top">
+                  <span class="order-no">{{ order.orderNo }}</span>
+                  <span class="order-date">{{ formatDate(order.createdAt) }}</span>
                 </div>
-                <div class="order-info-item editable-paid" @click.stop="startEditPaid(order, $event)">
-                  <span class="info-label">已付</span>
-                  <template v-if="editingOrderId === order.id">
-                    <span class="edit-prefix">¥</span>
-                    <input
-                      v-model.number="editingPaidAmount"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      :max="order.totalAmount"
-                      class="edit-paid-input"
-                      @keyup.enter="confirmEditPaid(order)"
-                      @blur="confirmEditPaid(order)"
-                      @click.stop
-                    />
-                  </template>
-                  <span v-else class="info-value paid">¥{{ formatAmount(order.paidAmount) }}</span>
-                </div>
-                <div class="order-info-item">
-                  <span class="info-label">欠款</span>
-                  <span class="info-value debt">¥{{ formatAmount(order.debtAmount) }}</span>
+                <div class="order-bottom">
+                  <span class="order-label">欠款</span>
+                  <span class="order-debt">¥{{ formatAmount(order.debtAmount) }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- 收款金额输入 -->
-          <div v-if="selectedOrder" class="receive-form">
+          <!-- 收款金额区域 -->
+          <div v-if="selectedOrderIds.length > 0" class="receive-form">
             <div class="form-row">
-              <span class="form-label">收款金额</span>
+              <span class="form-label">应收金额</span>
+              <span class="form-value">¥{{ formatAmount(selectedTotalDebt) }}</span>
+            </div>
+            <div class="form-row">
+              <span class="form-label">抹零金额</span>
               <div class="form-input-wrap">
                 <span class="form-prefix">¥</span>
                 <input
-                  v-model.number="receiveAmount"
+                  v-model.number="roundOffAmount"
                   type="number"
                   step="0.01"
                   min="0"
+                  :max="selectedTotalDebt"
                   class="form-input"
-                  placeholder="输入金额"
+                  placeholder="0.00"
                   @focus="$event.target.select()"
                 />
-                <div class="full-btn" @click="setFullAmount">全额</div>
               </div>
             </div>
-            <div class="form-row">
-              <span class="form-label">收款方式</span>
-              <div class="method-options">
-                <div
-                  v-for="method in paymentMethods"
-                  :key="method.value"
-                  :class="['method-item', { active: selectedMethod === method.value }]"
-                  @click="selectedMethod = method.value"
-                >
-                  <t-icon :name="method.icon" class="method-icon" />
-                  <span>{{ method.label }}</span>
-                </div>
-              </div>
+            <div class="form-row highlight-row">
+              <span class="form-label">实收金额</span>
+              <span class="form-value actual">¥{{ formatAmount(actualReceiveAmount) }}</span>
             </div>
           </div>
         </div>
@@ -189,14 +172,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useDebtStore } from '@/store/debt'
-import api from '@/utils/api'
+import { useBillingStore } from '@/store/billing'
 
 const router = useRouter()
 const debtStore = useDebtStore()
+const billingStore = useBillingStore()
 
 // 搜索关键词
 const searchKeyword = ref('')
@@ -223,26 +207,6 @@ watch(searchKeyword, (val) => {
   debtStore.fetchDebtCustomers(val)
 })
 
-// 收款弹窗
-const showReceivePopupVisible = ref(false)
-const selectedCustomer = ref(null)
-const selectedOrder = ref(null)
-const receiveAmount = ref(0)
-const selectedMethod = ref('cash')
-
-// 付款方式
-const paymentMethods = [
-  { value: 'cash', label: '现金', icon: 'money-circle' },
-  { value: 'wechat', label: '微信', icon: 'chat' },
-  { value: 'alipay', label: '支付宝', icon: 'logo-alipay' },
-  { value: 'transfer', label: '转账', icon: 'swap' }
-]
-
-// 是否可以收款
-const canReceive = computed(() =>
-  selectedOrder.value && receiveAmount.value > 0 && receiveAmount.value <= selectedOrder.value.debtAmount
-)
-
 // 格式化金额
 const formatAmount = (amount) => {
   if (amount === undefined || amount === null || isNaN(amount)) return '0.00'
@@ -264,132 +228,136 @@ const goToDetail = (customerId) => {
   router.push(`/debt/${customerId}`)
 }
 
-// 显示收款弹窗（需要先加载客户欠款详情）
-const showReceivePopup = async (customer) => {
-  selectedCustomer.value = customer
-  // 从API获取该客户的欠款订单明细
-  const detail = await debtStore.fetchCustomerDebtDetail(customer.customerId)
-  if (detail && detail.orders && detail.orders.length > 0) {
-    // orders来源于sales_orders，字段名为snake_case
-    selectedOrder.value = mapOrder(detail.orders[0])
-    selectedCustomer.value = {
-      ...customer,
-      orders: detail.orders.map(mapOrder)
-    }
-  }
-  receiveAmount.value = 0
-  showReceivePopupVisible.value = true
-}
+// ========== 批量收款 ==========
+const showReceivePopupVisible = ref(false)
+const receiveCustomer = ref(null)
+const receiveOrders = ref([])
+const selectedOrderIds = ref([])
+const roundOffAmount = ref(0)
 
 // 映射后端订单字段为前端格式
 const mapOrder = (order) => ({
   id: order.id,
-  orderId: order.id,
   orderNo: order.order_no || order.orderNo,
-  totalAmount: order.total_amount ?? order.totalAmount,
-  paidAmount: order.paid_amount ?? order.paidAmount,
-  debtAmount: order.debt_amount ?? order.debtAmount,
-  items: (order.items || []).map(item => ({
-    productName: item.product_name || item.productName,
-    color: item.color,
-    size: item.size,
-    quantity: item.quantity,
-    price: item.price
-  })),
-  createdAt: order.created_at || order.createdAt,
-  status: order.status
+  totalAmount: Number(order.total_amount ?? order.totalAmount) || 0,
+  paidAmount: Number(order.paid_amount ?? order.paidAmount) || 0,
+  debtAmount: Number(order.debt_amount ?? order.debtAmount) || 0,
+  createdAt: order.created_at || order.createdAt
 })
 
-// 关闭收款弹窗
+// 是否全选
+const isAllSelected = computed(() =>
+  receiveOrders.value.length > 0 && selectedOrderIds.value.length === receiveOrders.value.length
+)
+
+// 选中订单的总欠款
+const selectedTotalDebt = computed(() => {
+  return receiveOrders.value
+    .filter(o => selectedOrderIds.value.includes(o.id))
+    .reduce((sum, o) => sum + o.debtAmount, 0)
+})
+
+// 实收金额 = 应收 - 抹零
+const actualReceiveAmount = computed(() => {
+  const actual = selectedTotalDebt.value - (roundOffAmount.value || 0)
+  return Math.max(0, actual)
+})
+
+// 是否可收款
+const canReceive = computed(() =>
+  selectedOrderIds.value.length > 0 && actualReceiveAmount.value > 0
+)
+
+// 打开批量收款弹窗
+const openReceivePopup = async (customer) => {
+  receiveCustomer.value = customer
+  selectedOrderIds.value = []
+  roundOffAmount.value = 0
+
+  // 从API获取该客户的欠款订单明细
+  const detail = await debtStore.fetchCustomerDebtDetail(customer.customerId)
+  if (detail && detail.orders && detail.orders.length > 0) {
+    receiveOrders.value = detail.orders.map(mapOrder)
+    // 默认全选
+    selectedOrderIds.value = receiveOrders.value.map(o => o.id)
+  } else {
+    receiveOrders.value = []
+  }
+
+  showReceivePopupVisible.value = true
+}
+
+// 关闭弹窗
 const closeReceivePopup = () => {
   showReceivePopupVisible.value = false
-  selectedCustomer.value = null
-  selectedOrder.value = null
+  receiveCustomer.value = null
+  receiveOrders.value = []
+  selectedOrderIds.value = []
+  roundOffAmount.value = 0
 }
 
-// 选择订单
-const selectOrder = (order) => {
-  selectedOrder.value = order
-  receiveAmount.value = 0
-}
-
-// 设置全额
-const setFullAmount = () => {
-  if (selectedOrder.value) {
-    receiveAmount.value = selectedOrder.value.debtAmount
+// 切换全选
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    selectedOrderIds.value = []
+  } else {
+    selectedOrderIds.value = receiveOrders.value.map(o => o.id)
   }
+  roundOffAmount.value = 0
 }
 
-// 确认收款
+// 切换单个订单选中
+const toggleOrderSelect = (orderId) => {
+  const idx = selectedOrderIds.value.indexOf(orderId)
+  if (idx >= 0) {
+    selectedOrderIds.value.splice(idx, 1)
+  } else {
+    selectedOrderIds.value.push(orderId)
+  }
+  roundOffAmount.value = 0
+}
+
+// 确认批量收款
 const confirmReceive = async () => {
   if (!canReceive.value) return
 
+  const selectedOrders = receiveOrders.value.filter(o => selectedOrderIds.value.includes(o.id))
+  const totalDebt = selectedTotalDebt.value
+  const roundOff = roundOffAmount.value || 0
+
+  // 将实收金额按欠款比例分配到各订单
+  const actualTotal = actualReceiveAmount.value
+
   try {
-    await debtStore.recordPayment(selectedCustomer.value.customerId, {
-      orderId: selectedOrder.value.orderId || selectedOrder.value.id,
-      amount: receiveAmount.value,
-      paymentMethod: selectedMethod.value
-    })
-    MessagePlugin.success('收款成功')
+    let remaining = actualTotal
+    for (let i = 0; i < selectedOrders.length; i++) {
+      const order = selectedOrders[i]
+      let paymentAmount
+      if (i === selectedOrders.length - 1) {
+        // 最后一笔：分配剩余金额，避免精度丢失
+        paymentAmount = remaining
+      } else {
+        // 按欠款比例分配
+        paymentAmount = Math.round((order.debtAmount / totalDebt) * actualTotal * 100) / 100
+        remaining = Math.round((remaining - paymentAmount) * 100) / 100
+      }
+
+      if (paymentAmount > 0) {
+        await debtStore.recordPayment(receiveCustomer.value.customerId, {
+          orderId: order.id,
+          amount: paymentAmount,
+          paymentMethod: 'cash'
+        })
+      }
+    }
+
+    MessagePlugin.success(`收款成功，实收¥${formatAmount(actualTotal)}`)
     closeReceivePopup()
-  } catch (e) {
-    MessagePlugin.error(e.message || '收款失败')
-  }
-}
-
-// 编辑已付款金额
-const editingOrderId = ref(null)
-const editingPaidAmount = ref(0)
-const isSavingPaid = ref(false)
-
-const startEditPaid = async (order, event) => {
-  editingOrderId.value = order.id
-  editingPaidAmount.value = Number(order.paidAmount) || 0
-  await nextTick()
-  const input = event?.target?.parentElement?.querySelector('.edit-paid-input')
-  if (input) {
-    input.focus()
-    input.select()
-  }
-}
-
-const confirmEditPaid = async (order) => {
-  if (isSavingPaid.value) return
-  if (editingOrderId.value !== order.id) return
-
-  const newPaidAmount = Number(editingPaidAmount.value)
-  const oldPaidAmount = Number(order.paidAmount)
-
-  if (isNaN(newPaidAmount) || newPaidAmount < 0) {
-    MessagePlugin.warning('已付款金额不能为负数')
-    editingOrderId.value = null
-    return
-  }
-
-  if (newPaidAmount > Number(order.totalAmount)) {
-    MessagePlugin.warning('已付款金额不能超过订单总金额')
-    editingOrderId.value = null
-    return
-  }
-
-  if (Math.abs(newPaidAmount - oldPaidAmount) < 0.001) {
-    editingOrderId.value = null
-    return
-  }
-
-  isSavingPaid.value = true
-  try {
-    await api.put(`/debt/orders/${order.id}/paid-amount`, {
-      paidAmount: Number(newPaidAmount.toFixed(2))
-    })
-    MessagePlugin.success('已付款金额更新成功')
-    editingOrderId.value = null
     // 刷新欠款列表
     await debtStore.fetchDebtCustomers()
+    await billingStore.fetchSalesOrders()
   } catch (e) {
-    MessagePlugin.error(e.response?.data?.message || e.message || '更新失败')
-  } finally {
-    isSavingPaid.value = false
+    MessagePlugin.error(e.message || '收款失败')
   }
 }
 
@@ -587,29 +555,6 @@ onMounted(() => {
         }
       }
 
-      .card-orders {
-        padding: 8px 0;
-        border-top: 1px solid $border-lighter;
-        border-bottom: 1px solid $border-lighter;
-
-        .order-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 4px 0;
-
-          .order-no {
-            font-size: 12px;
-            color: $text-placeholder;
-          }
-          .order-amount {
-            font-size: 13px;
-            font-weight: 500;
-            color: $text-secondary;
-          }
-        }
-      }
-
       .card-actions {
         display: flex;
         gap: 8px;
@@ -692,111 +637,137 @@ onMounted(() => {
     .popup-body {
       flex: 1;
       overflow-y: auto;
-      padding: 14px 16px;
+      padding: 0;
 
+      // 全选行
+      .select-all-row {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid $border-lighter;
+        cursor: pointer;
+
+        .select-icon {
+          font-size: 20px;
+          color: #d9d9d9;
+          flex-shrink: 0;
+          transition: color 0.2s;
+
+          &.active { color: $primary-color; }
+        }
+
+        .select-text {
+          font-size: 14px;
+          font-weight: 500;
+          color: $text-primary;
+          margin-left: 8px;
+        }
+
+        .select-count {
+          font-size: 12px;
+          color: $text-placeholder;
+          margin-left: auto;
+        }
+      }
+
+      // 订单列表
       .order-list {
-        margin-bottom: 14px;
-
         .order-card {
-          padding: 10px 12px;
-          background: $bg-page;
-          border-radius: 8px;
-          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          padding: 12px 16px;
+          border-bottom: 1px solid $border-lighter;
           cursor: pointer;
-          border: 2px solid transparent;
-          transition: all 0.2s;
+          transition: background 0.2s;
 
-          &.selected {
-            background: #FFF5F5;
-            border-color: $error-color;
-          }
+          &:last-child { border-bottom: none; }
 
-          .order-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
+          &.selected { background: rgba($primary-color, 0.03); }
 
-            .order-no {
-              font-size: 13px;
-              font-weight: 600;
-              color: $text-primary;
-            }
-            .order-date {
-              font-size: 12px;
-              color: $text-placeholder;
+          .order-left {
+            flex-shrink: 0;
+            margin-right: 10px;
+
+            .order-check {
+              font-size: 20px;
+              color: #d9d9d9;
+              transition: color 0.2s;
+
+              &.active { color: $primary-color; }
             }
           }
 
-          .order-mid {
-            display: flex;
-            gap: 16px;
+          .order-info {
+            flex: 1;
+            min-width: 0;
 
-            .order-info-item {
-              .info-label {
+            .order-top {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              margin-bottom: 4px;
+
+              .order-no {
+                font-size: 13px;
+                font-weight: 600;
+                color: $text-primary;
+              }
+              .order-date {
+                font-size: 12px;
+                color: $text-placeholder;
+              }
+            }
+
+            .order-bottom {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+
+              .order-label {
                 font-size: 11px;
                 color: $text-placeholder;
-                display: block;
               }
-              .info-value {
-                font-size: 13px;
-                font-weight: 600;
-                color: $text-primary;
-
-                &.paid { color: #38A169; }
-                &.debt { color: $error-color; }
-              }
-            }
-
-            .editable-paid {
-              cursor: pointer;
-
-              .edit-prefix {
-                font-size: 12px;
-                color: #38A169;
-                font-weight: 500;
-              }
-
-              .edit-paid-input {
-                width: 60px;
-                border: 1px solid $primary-color;
-                border-radius: 4px;
-                padding: 1px 4px;
-                font-size: 13px;
-                font-weight: 600;
-                color: $text-primary;
-                outline: none;
-                background: white;
-                text-align: right;
-
-                &:focus {
-                  border-color: $primary-color;
-                  box-shadow: 0 0 0 2px rgba($primary-color, 0.15);
-                }
-              }
-
-              &:active {
-                opacity: 0.8;
+              .order-debt {
+                font-size: 14px;
+                font-weight: 700;
+                color: $error-color;
               }
             }
           }
         }
       }
 
+      // 收款表单
       .receive-form {
+        padding: 14px 16px;
         background: $bg-page;
-        border-radius: 8px;
-        padding: 12px;
+        border-top: 1px solid $border-lighter;
 
         .form-row {
-          margin-bottom: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
 
           &:last-child { margin-bottom: 0; }
 
           .form-label {
             font-size: 13px;
             color: $text-secondary;
-            margin-bottom: 8px;
+            flex-shrink: 0;
+            white-space: nowrap;
+          }
+
+          .form-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: $text-primary;
+
+            &.actual {
+              font-size: 18px;
+              font-weight: 700;
+              color: $primary-color;
+            }
           }
 
           .form-input-wrap {
@@ -804,64 +775,48 @@ onMounted(() => {
             align-items: center;
             border: 1px solid $border-color;
             border-radius: 6px;
-            height: 36px;
+            height: 32px;
             padding: 0 8px;
             background: white;
+            width: 100px;
 
             .form-prefix {
-              font-size: 14px;
+              font-size: 13px;
               color: $text-placeholder;
-              margin-right: 4px;
+              margin-right: 2px;
+              flex-shrink: 0;
             }
 
             .form-input {
               flex: 1;
               border: none;
               outline: none;
-              font-size: 16px;
+              font-size: 14px;
               font-weight: 600;
               color: $text-primary;
               height: 100%;
-              &::placeholder { color: $text-placeholder; font-size: 13px; }
-            }
+              min-width: 0;
+              text-align: right;
 
-            .full-btn {
-              padding: 4px 10px;
-              background: $primary-color;
-              color: white;
-              border-radius: 4px;
-              font-size: 12px;
-              cursor: pointer;
-              flex-shrink: 0;
-              &:active { opacity: 0.85; }
+              &::placeholder { color: $text-placeholder; font-size: 12px; }
+
+              // 隐藏数字输入框的箭头
+              &::-webkit-outer-spin-button,
+              &::-webkit-inner-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+              }
+
+              &[type='number'] {
+                -moz-appearance: textfield;
+              }
             }
           }
 
-          .method-options {
-            display: flex;
-            gap: 8px;
-
-            .method-item {
-              display: flex;
-              align-items: center;
-              gap: 4px;
-              padding: 6px 12px;
-              border: 1px solid $border-color;
-              border-radius: 6px;
-              font-size: 12px;
-              color: $text-secondary;
-              cursor: pointer;
-
-              .method-icon { font-size: 14px; }
-
-              &:active { background: $bg-hover; }
-
-              &.active {
-                border-color: $primary-color;
-                color: $primary-color;
-                background: rgba($primary-color, 0.05);
-              }
-            }
+          &.highlight-row {
+            padding: 8px 0;
+            border-top: 1px dashed $border-lighter;
+            margin-top: 4px;
           }
         }
       }
@@ -896,7 +851,7 @@ onMounted(() => {
         font-size: 14px;
         font-weight: 600;
         cursor: pointer;
-        background: $error-color;
+        background: $primary-color;
         color: white;
         &:active { opacity: 0.85; }
         &.disabled {
