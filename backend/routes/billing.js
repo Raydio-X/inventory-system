@@ -114,4 +114,17 @@ router.delete('/orders/:id',
   billingController.deleteSalesOrder
 );
 
+/**
+ * 获取客户历史购买价格
+ * GET /api/billing/history-prices
+ */
+router.get('/history-prices',
+  [
+    query('customerId').notEmpty().withMessage('客户ID不能为空'),
+    query('productIds').notEmpty().withMessage('商品ID列表不能为空')
+  ],
+  validate,
+  billingController.getCustomerHistoryPrices
+);
+
 module.exports = router;

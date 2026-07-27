@@ -442,11 +442,60 @@ const deleteSalesOrder = async (req, res, next) => {
   }
 };
 
+/**
+ * 获取客户历史购买价格
+ * 根据客户ID和商品ID列表，查询该客户购买这些商品的历史价格
+ */
+const getCustomerHistoryPrices = async (req, res, next) => {
+  try {
+    const { customerId, productIds } = req.query;
+
+    if (!customerId || !productIds) {
+      return res.status(400).json({ message: '缺少必要参数' });
+    }
+
+    // 解析商品ID列表（products.id 是 VARCHAR 字符串，不能用 parseInt）
+    const productIdList = productIds.split(',').filter(id => id);
+
+    if (productIdList.length === 0) {
+      return res.json({});
+    }
+
+    // 查询该客户购买这些商品的订单记录
+    // sales_order_items 没有 product_id，需要通过 skus 表关联
+    const placeholders = productIdList.map(() => '?').join(',');
+    const sql = `
+      SELECT s.product_id, oi.price, o.created_at
+      FROM sales_order_items oi
+      JOIN sales_orders o ON oi.order_id = o.id
+      JOIN skus s ON oi.sku_id = s.id
+      WHERE o.customer_id = ? AND s.product_id IN (${placeholders})
+      ORDER BY o.created_at DESC
+    `;
+
+    const rows = await dataStore.query(sql, [customerId, ...productIdList]);
+
+    // 每个商品取最近一次购买的价格
+    const priceMap = {};
+    rows.forEach(row => {
+      if (!priceMap[row.product_id]) {
+        priceMap[row.product_id] = Number(row.price);
+      }
+    });
+
+    res.json(priceMap);
+  } catch (error) {
+    console.error('获取客户历史购买价格失败:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getSalesOrders,
   getSalesOrderById,
   createSalesOrder,
   updateOrderPayment,
   updateSalesOrder,
-  deleteSalesOrder
+  deleteSalesOrder,
+  getCustomerHistoryPrices
 };

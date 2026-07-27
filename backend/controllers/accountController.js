@@ -480,14 +480,21 @@ const getCustomerProfit = async (req, res, next) => {
     const endStr = endDate.toISOString().slice(0, 10);
 
     // 查询每个客户的销售统计
+    // 如果订单明细的成本价为NULL或0，则使用商品表的当前成本价
     const customerSales = await db.query(
-      `SELECT 
+      `SELECT
         so.customer_id,
         so.customer_name,
         COUNT(DISTINCT so.id) as order_count,
         COALESCE(SUM(soi.quantity), 0) as sales_count,
         COALESCE(SUM(soi.quantity * soi.price), 0) as sales_amount,
-        COALESCE(SUM(soi.quantity * soi.cost_price), 0) as cost_amount
+        COALESCE(SUM(
+          soi.quantity * CASE
+            WHEN soi.cost_price IS NULL OR soi.cost_price = 0 THEN
+              (SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = soi.sku_id)
+            ELSE soi.cost_price
+          END
+        ), 0) as cost_amount
        FROM sales_orders so
        LEFT JOIN sales_order_items soi ON so.id = soi.order_id
        WHERE so.created_at >= ? AND so.created_at < ?

@@ -55,22 +55,38 @@
       <div v-for="group in groupedCartItems" :key="group.productId" class="cart-group">
         <!-- 商品组标题：商品名 + 统一售价修改 -->
         <div class="group-header">
-          <div class="group-name">{{ group.productName }}</div>
-          <div class="group-price-row">
-            <span class="group-price-label">售价</span>
-            <div class="price-input-wrap">
-              <span class="price-prefix">¥</span>
-              <input
-                :value="getProductPrice(group.productId)"
-                type="number"
-                step="0.01"
-                min="0"
-                class="price-input"
-                @focus="$event.target.select()"
-                @input="updateProductPrice(group.productId, Number($event.target.value) || 0)"
-              />
+          <div class="group-top-row">
+            <div class="group-name">{{ group.productName }}</div>
+            <div class="group-price-row">
+              <span class="group-price-label">售价</span>
+              <div class="price-input-wrap">
+                <span class="price-prefix">¥</span>
+                <input
+                  :value="getProductPrice(group.productId)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="price-input"
+                  @focus="$event.target.select()"
+                  @input="updateProductPrice(group.productId, Number($event.target.value) || 0)"
+                />
+              </div>
+              <span class="group-spec-count">{{ getGroupQuantity(group) }}件</span>
             </div>
-            <span class="group-spec-count">{{ getGroupQuantity(group) }}件</span>
+          </div>
+          <!-- 价格参考 -->
+          <div v-if="currentCustomer && currentCustomer.id !== 'customer-walk-in'" class="price-reference">
+            <div class="ref-item">
+              <span class="ref-label">当前售价</span>
+              <span class="ref-value">¥{{ getProductStandardPrice(group.productId) }}</span>
+            </div>
+            <div class="ref-divider"></div>
+            <div class="ref-item">
+              <span class="ref-label">客户历史购买价</span>
+              <span class="ref-value" :class="{ highlight: getCustomerHistoryPrice(group.productId) }">
+                {{ getCustomerHistoryPrice(group.productId) ? '¥' + getCustomerHistoryPrice(group.productId) : '暂无记录' }}
+              </span>
+            </div>
           </div>
         </div>
         <!-- 规格明细列表 -->
@@ -398,15 +414,19 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { useBillingStore } from '@/store/billing'
 import { useCustomerStore } from '@/store/customer'
 import { useDebtStore } from '@/store/debt'
+import { useProductStore } from '@/store/product'
+import api from '@/utils/api'
 
 const router = useRouter()
 const billingStore = useBillingStore()
 const customerStore = useCustomerStore()
 const debtStore = useDebtStore()
+const productStore = useProductStore()
 
-// 初始化客户数据
+// 初始化数据
 onMounted(() => {
   customerStore.initData()
+  productStore.initData()
 })
 
 const cartItems = computed(() => billingStore.cartItems)
@@ -453,6 +473,57 @@ const getProductPrice = (productId) => {
 const getGroupQuantity = (group) => {
   return group.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
 }
+
+// 客户历史购买价格缓存
+const customerHistoryPrices = ref({})
+
+// 获取商品标准售价
+const getProductStandardPrice = (productId) => {
+  const product = productStore.products.find(p => p.id === productId)
+  return product ? product.price : 0
+}
+
+// 获取客户历史购买此商品的价格
+const getCustomerHistoryPrice = (productId) => {
+  if (!currentCustomer.value || !productId || currentCustomer.value.id === 'customer-walk-in') return null
+  return customerHistoryPrices.value[`${currentCustomer.value.id}_${productId}`] || null
+}
+
+// 加载客户历史购买价格
+const loadCustomerHistoryPrices = async () => {
+  if (!currentCustomer.value || currentCustomer.value.id === 'customer-walk-in' || cartItems.value.length === 0) {
+    customerHistoryPrices.value = {}
+    return
+  }
+
+  try {
+    const productIds = [...new Set(cartItems.value.map(item => item.productId))]
+    const res = await api.get('/billing/history-prices', {
+      params: {
+        customerId: currentCustomer.value.id,
+        productIds: productIds.join(',')
+      }
+    })
+    if (res) {
+      const priceMap = {}
+      Object.entries(res).forEach(([productId, price]) => {
+        priceMap[`${currentCustomer.value.id}_${productId}`] = price
+      })
+      customerHistoryPrices.value = priceMap
+    }
+  } catch (e) {
+    console.error('加载历史价格失败', e)
+  }
+}
+
+// 监听客户和购物车变化，加载历史价格
+watch(
+  [currentCustomer, cartItems],
+  () => {
+    loadCustomerHistoryPrices()
+  },
+  { immediate: true, deep: true }
+)
 
 const discountPercent = ref(100)
 const roundOff = ref(0)
@@ -934,63 +1005,111 @@ const goBack = () => {
       overflow: hidden;
 
       .group-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
         padding: 12px 14px;
         background: #f5f5f5;
         border-bottom: 1px solid $border-lighter;
 
-        .group-name {
-          font-size: 16px;
-          font-weight: 600;
-          color: $text-primary;
-        }
-
-        .group-price-row {
+        .group-top-row {
           display: flex;
           align-items: center;
-          gap: 8px;
+          justify-content: space-between;
+          margin-bottom: 8px;
 
-          .group-price-label {
-            font-size: 13px;
-            color: $text-secondary;
+          .group-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: $text-primary;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
           }
 
-          .price-input-wrap {
+          .group-price-row {
             display: flex;
             align-items: center;
-            border: 1px solid $primary-color;
-            border-radius: 6px;
-            height: 28px;
-            padding: 0 6px;
-            background: white;
+            gap: 8px;
+            flex-shrink: 0;
 
-            .price-prefix {
+            .group-price-label {
               font-size: 13px;
-              color: $primary-color;
-              font-weight: 500;
+              color: $text-secondary;
+              white-space: nowrap;
             }
 
-            .price-input {
-              width: 60px;
-              border: none;
-              outline: none;
-              font-size: 14px;
-              font-weight: 500;
-              color: $text-primary;
-              text-align: center;
-              background: transparent;
+            .price-input-wrap {
+              display: flex;
+              align-items: center;
+              border: 1px solid $primary-color;
+              border-radius: 6px;
+              height: 28px;
+              padding: 0 6px;
+              background: white;
 
-              &::placeholder {
-                color: $text-placeholder;
+              .price-prefix {
+                font-size: 13px;
+                color: $primary-color;
+                font-weight: 500;
+              }
+
+              .price-input {
+                width: 60px;
+                border: none;
+                outline: none;
+                font-size: 14px;
+                font-weight: 500;
+                color: $text-primary;
+                text-align: center;
+                background: transparent;
+
+                &::placeholder {
+                  color: $text-placeholder;
+                }
+              }
+            }
+
+            .group-spec-count {
+              font-size: 12px;
+              color: $text-placeholder;
+              white-space: nowrap;
+            }
+          }
+        }
+
+        // 价格参考样式
+        .price-reference {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 10px;
+          background: rgba($primary-color, 0.05);
+          border-radius: 6px;
+
+          .ref-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+
+            .ref-label {
+              font-size: 11px;
+              color: $text-placeholder;
+            }
+
+            .ref-value {
+              font-size: 13px;
+              font-weight: 500;
+              color: $text-secondary;
+
+              &.highlight {
+                color: $primary-color;
               }
             }
           }
 
-          .group-spec-count {
-            font-size: 12px;
-            color: $text-placeholder;
+          .ref-divider {
+            width: 1px;
+            height: 12px;
+            background: $border-lighter;
           }
         }
       }
