@@ -934,38 +934,14 @@ class MySQLDataStore {
         [orderId]
       );
 
-      // 更新库存 + 计算成本价
+      // 更新库存
       for (const item of items) {
         if (item.sku_id) {
-          // 获取当前库存和成本价用于移动加权平均计算
-          const [skuRows] = await connection.execute(
-            'SELECT stock, price FROM skus WHERE id = ?',
-            [item.sku_id]
-          );
-          const currentSku = skuRows[0];
-
           // 更新SKU库存
           await connection.execute(
             'UPDATE skus SET stock = stock + ? WHERE id = ?',
             [item.quantity, item.sku_id]
           );
-
-          // 移动加权平均法计算商品成本价
-          if (currentSku && item.cost_price > 0) {
-            const oldStock = currentSku.stock;
-            const oldPrice = Number(currentSku.price);
-            const newStock = oldStock + item.quantity;
-            const newCostPrice = Number(item.cost_price);
-            const avgPrice = newStock > 0
-              ? (oldStock * oldPrice + item.quantity * newCostPrice) / newStock
-              : newCostPrice;
-
-            // 更新商品成本价
-            await connection.execute(
-              'UPDATE products SET cost_price = ? WHERE id = ?',
-              [Math.round(avgPrice * 100) / 100, item.product_id]
-            );
-          }
 
           // 记录库存流水
           const logId = this.generateId('inv-');
@@ -978,6 +954,28 @@ class MySQLDataStore {
           // 采购明细必须关联已有SKU，无SKU的明细跳过入库
           continue;
         }
+      }
+
+      // 简单加权平均法：重新计算所有相关商品的成本价
+      // 收集涉及的product_id（去重）
+      const productIds = [...new Set(items.map(item => item.product_id).filter(Boolean))];
+      for (const productId of productIds) {
+        // 查询该商品所有已入库采购记录
+        const [purchaseRows] = await connection.execute(
+          `SELECT SUM(oi.quantity) as total_quantity, SUM(oi.total_price) as total_cost
+           FROM purchase_order_items oi
+           JOIN purchase_orders po ON oi.order_id = po.id
+           WHERE oi.product_id = ? AND po.status = 'completed'`,
+          [productId]
+        );
+        const totalQuantity = Number(purchaseRows[0]?.total_quantity) || 0;
+        const totalCost = Number(purchaseRows[0]?.total_cost) || 0;
+        const newCostPrice = totalQuantity > 0 ? Math.round((totalCost / totalQuantity) * 100) / 100 : 0;
+
+        await connection.execute(
+          'UPDATE products SET cost_price = ? WHERE id = ?',
+          [newCostPrice, productId]
+        );
       }
 
       // 记录账目

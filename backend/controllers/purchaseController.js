@@ -280,7 +280,7 @@ const createPurchaseOrder = async (req, res, next) => {
 
 /**
  * 确认采购入库
- * 事务内完成：库存增加 + 成本价更新(移动加权平均) + 库存流水 + 账目记录 + 状态更新
+ * 事务内完成：库存增加 + 成本价更新(简单加权平均) + 库存流水 + 账目记录 + 状态更新
  */
 const confirmPurchase = async (req, res, next) => {
   try {
@@ -302,7 +302,7 @@ const confirmPurchase = async (req, res, next) => {
     );
 
     await db.transaction(async (connection) => {
-      // 更新库存 + 计算成本价
+      // 更新库存
       for (const item of items) {
         if (!item.sku_id) continue;
 
@@ -324,32 +324,6 @@ const confirmPurchase = async (req, res, next) => {
           );
         }
 
-        // 移动加权平均法计算商品成本价
-        if (item.cost_price > 0) {
-          // 获取商品当前成本价
-          const [productRows] = await connection.execute(
-            'SELECT cost_price FROM products WHERE id = ?',
-            [item.product_id]
-          );
-          const currentProduct = productRows[0];
-          const oldCostPrice = Number(currentProduct?.cost_price || 0);
-
-          const oldStock = currentSku.stock;
-          const newStock = existing.is_first_purchase ? oldStock : oldStock + item.quantity;
-          const newCostPrice = Number(item.cost_price);
-
-          // 移动加权平均：新成本 = (旧库存 * 旧成本 + 入库数量 * 入库成本) / 新库存
-          const avgCostPrice = newStock > 0
-            ? (oldStock * oldCostPrice + item.quantity * newCostPrice) / newStock
-            : newCostPrice;
-
-          // 更新商品成本价
-          await connection.execute(
-            'UPDATE products SET cost_price = ? WHERE id = ?',
-            [Math.round(avgCostPrice * 100) / 100, item.product_id]
-          );
-        }
-
         // 记录库存流水
         const logId = `inv-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
         const logRemark = existing.is_first_purchase ? '首次采购入库（仅记录成本）' : '采购入库';
@@ -360,18 +334,38 @@ const confirmPurchase = async (req, res, next) => {
         );
       }
 
+      // 更新订单状态为已完成（必须在计算成本前更新，否则简单加权平均查不到这条记录）
+      await connection.execute(
+        'UPDATE purchase_orders SET status = ? WHERE id = ?',
+        ['completed', id]
+      );
+
+      // 简单加权平均法：重新计算所有相关商品的成本价
+      const productIds = [...new Set(items.map(item => item.product_id).filter(Boolean))];
+      for (const productId of productIds) {
+        const [purchaseRows] = await connection.execute(
+          `SELECT SUM(oi.quantity) as total_quantity, SUM(oi.total_price) as total_cost
+           FROM purchase_order_items oi
+           JOIN purchase_orders po ON oi.order_id = po.id
+           WHERE oi.product_id = ? AND po.status = 'completed'`,
+          [productId]
+        );
+        const totalQuantity = Number(purchaseRows[0]?.total_quantity) || 0;
+        const totalCost = Number(purchaseRows[0]?.total_cost) || 0;
+        const newCostPrice = totalQuantity > 0 ? Math.round((totalCost / totalQuantity) * 100) / 100 : 0;
+
+        await connection.execute(
+          'UPDATE products SET cost_price = ? WHERE id = ?',
+          [newCostPrice, productId]
+        );
+      }
+
       // 记录账目
       const accId = `acc-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
       await connection.execute(
         `INSERT INTO account_records (id, type, category, amount, order_id, order_no, remark)
          VALUES (?, 'expense', 'purchase', ?, ?, ?, ?)`,
         [accId, existing.total_amount, id, existing.order_no, `采购入库 - ${existing.supplier || '供应商'}`]
-      );
-
-      // 更新订单状态
-      await connection.execute(
-        'UPDATE purchase_orders SET status = ? WHERE id = ?',
-        ['completed', id]
       );
     });
 
@@ -509,44 +503,29 @@ const revokePurchaseOrder = async (req, res, next) => {
     );
 
     await db.transaction(async (connection) => {
-      // 回滚成本
-      for (const item of items) {
-        // 获取该商品的所有采购订单（排除当前要撤回的订单）
-        const [otherOrders] = await connection.execute(
-          `SELECT poi.quantity, poi.cost_price
-           FROM purchase_order_items poi
-           JOIN purchase_orders po ON poi.order_id = po.id
-           WHERE poi.product_id = ? AND po.status = 'completed' AND po.id != ?`,
-          [item.product_id, id]
-        );
-
-        if (otherOrders.length === 0) {
-          // 没有其他采购订单，成本重置为 0
-          await connection.execute(
-            'UPDATE products SET cost_price = 0 WHERE id = ?',
-            [item.product_id]
-          );
-        } else {
-          // 重新计算移动加权平均成本
-          let totalQuantity = 0;
-          let totalCost = 0;
-          for (const order of otherOrders) {
-            totalQuantity += Number(order.quantity);
-            totalCost += Number(order.quantity) * Number(order.cost_price);
-          }
-          const newCostPrice = totalQuantity > 0 ? Math.round((totalCost / totalQuantity) * 100) / 100 : 0;
-          
-          await connection.execute(
-            'UPDATE products SET cost_price = ? WHERE id = ?',
-            [newCostPrice, item.product_id]
-          );
-        }
-      }
-
-      // 删除采购订单明细
+      // 先删除采购订单和明细
       await connection.execute('DELETE FROM purchase_order_items WHERE order_id = ?', [id]);
-      // 删除采购订单
       await connection.execute('DELETE FROM purchase_orders WHERE id = ?', [id]);
+
+      // 简单加权平均法：重新计算所有相关商品的成本价
+      const productIds = [...new Set(items.map(item => item.product_id).filter(Boolean))];
+      for (const productId of productIds) {
+        const [purchaseRows] = await connection.execute(
+          `SELECT SUM(oi.quantity) as total_quantity, SUM(oi.total_price) as total_cost
+           FROM purchase_order_items oi
+           JOIN purchase_orders po ON oi.order_id = po.id
+           WHERE oi.product_id = ? AND po.status = 'completed'`,
+          [productId]
+        );
+        const totalQuantity = Number(purchaseRows[0]?.total_quantity) || 0;
+        const totalCost = Number(purchaseRows[0]?.total_cost) || 0;
+        const newCostPrice = totalQuantity > 0 ? Math.round((totalCost / totalQuantity) * 100) / 100 : 0;
+
+        await connection.execute(
+          'UPDATE products SET cost_price = ? WHERE id = ?',
+          [newCostPrice, productId]
+        );
+      }
     });
 
     res.json({

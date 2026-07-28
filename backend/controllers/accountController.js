@@ -47,10 +47,13 @@ const getStatistics = async (req, res, next) => {
     );
 
     // 查询销售商品数量和成本
+    // 成本价统一使用 products.cost_price（简单加权平均成本），确保与前端显示一致
     const salesItemsResult = await db.query(
       `SELECT 
         COALESCE(SUM(soi.quantity), 0) as sales_count,
-        COALESCE(SUM(soi.quantity * soi.cost_price), 0) as cost_amount
+        COALESCE(SUM(
+          soi.quantity * (SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = soi.sku_id)
+        ), 0) as cost_amount
        FROM sales_order_items soi
        JOIN sales_orders so ON soi.order_id = so.id
        WHERE so.created_at >= ? AND so.created_at < ?`,
@@ -286,11 +289,12 @@ const createAccountRecord = async (req, res, next) => {
  */
 const getProfitDetail = async (req, res, next) => {
   try {
-    // 首先获取所有商品及其SKU信息
+    // 首先获取所有商品及其SKU信息（含成本价）
     const allProducts = await db.query(
       `SELECT
         p.id as product_id,
         p.name as product_name,
+        p.cost_price as product_cost_price,
         s.id as sku_id,
         s.color,
         s.size
@@ -300,31 +304,21 @@ const getProfitDetail = async (req, res, next) => {
        ORDER BY p.name, s.color, s.size`
     );
 
-    // 查询每个商品的销售统计（销售额）
+    // 查询每个商品的销售统计（销售额 + 成本）
+    // 成本价统一使用 products.cost_price（简单加权平均成本），确保与前端显示一致
     const salesDetail = await db.query(
       `SELECT
         soi.product_name,
         soi.color,
         soi.size,
         COALESCE(SUM(soi.quantity), 0) as sales_count,
-        COALESCE(SUM(soi.quantity * soi.price), 0) as sales_amount
+        COALESCE(SUM(soi.quantity * soi.price), 0) as sales_amount,
+        COALESCE(SUM(
+          soi.quantity * (SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = soi.sku_id)
+        ), 0) as cost_amount
        FROM sales_order_items soi
        JOIN sales_orders so ON soi.order_id = so.id
        GROUP BY soi.product_name, soi.color, soi.size`
-    );
-
-    // 查询每个商品的采购成本（从采购订单明细）
-    const purchaseDetail = await db.query(
-      `SELECT
-        poi.product_name,
-        poi.color,
-        poi.size,
-        COALESCE(SUM(poi.quantity), 0) as purchase_count,
-        COALESCE(SUM(poi.quantity * poi.cost_price), 0) as cost_amount
-       FROM purchase_order_items poi
-       JOIN purchase_orders po ON poi.order_id = po.id
-       WHERE po.status = 'completed'
-       GROUP BY poi.product_name, poi.color, poi.size`
     );
 
     // 查询每个商品的退货统计
@@ -354,30 +348,20 @@ const getProfitDetail = async (req, res, next) => {
           salesCount: 0,
           salesAmount: 0,
           costAmount: 0,
-          purchaseCount: 0,
           returnCount: 0,
           returnAmount: 0
         });
       }
     });
 
-    // 处理采购成本数据
-    purchaseDetail.forEach(item => {
-      const key = `${item.product_name}|${item.color}|${item.size}`;
-      if (productMap.has(key)) {
-        const existing = productMap.get(key);
-        existing.costAmount = Number(item.cost_amount) || 0;
-        existing.purchaseCount = Number(item.purchase_count) || 0;
-      }
-    });
-
-    // 处理销售数据
+    // 处理销售数据（含成本）
     salesDetail.forEach(item => {
       const key = `${item.product_name}|${item.color}|${item.size}`;
       if (productMap.has(key)) {
         const existing = productMap.get(key);
         existing.salesCount = Number(item.sales_count) || 0;
         existing.salesAmount = Number(item.sales_amount) || 0;
+        existing.costAmount = Number(item.cost_amount) || 0;
       }
     });
 
@@ -480,7 +464,7 @@ const getCustomerProfit = async (req, res, next) => {
     const endStr = endDate.toISOString().slice(0, 10);
 
     // 查询每个客户的销售统计
-    // 如果订单明细的成本价为NULL或0，则使用商品表的当前成本价
+    // 成本价统一使用 products.cost_price（简单加权平均成本），确保与前端显示一致
     const customerSales = await db.query(
       `SELECT
         so.customer_id,
@@ -489,11 +473,7 @@ const getCustomerProfit = async (req, res, next) => {
         COALESCE(SUM(soi.quantity), 0) as sales_count,
         COALESCE(SUM(soi.quantity * soi.price), 0) as sales_amount,
         COALESCE(SUM(
-          soi.quantity * CASE
-            WHEN soi.cost_price IS NULL OR soi.cost_price = 0 THEN
-              (SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = soi.sku_id)
-            ELSE soi.cost_price
-          END
+          soi.quantity * (SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = soi.sku_id)
         ), 0) as cost_amount
        FROM sales_orders so
        LEFT JOIN sales_order_items soi ON so.id = soi.order_id

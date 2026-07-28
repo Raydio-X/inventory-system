@@ -7,16 +7,15 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * 计算商品的平均成本
- * 平均成本 = 所有采购订单总成本之和 ÷ 所有采购订单总数量之和
+ * 计算商品的平均成本（简单加权平均）
+ * 平均成本 = 所有已入库采购订单总金额 ÷ 所有已入库采购订单总数量
  * @param {string} productId - 商品ID
  * @returns {number} 平均成本，保留两位小数
  */
 async function calculateAvgCost(productId) {
   try {
-    // 从采购订单明细中获取该商品的所有采购记录
     const result = await db.query(`
-      SELECT 
+      SELECT
         SUM(oi.quantity) as total_quantity,
         SUM(oi.total_price) as total_cost
       FROM purchase_order_items oi
@@ -24,19 +23,15 @@ async function calculateAvgCost(productId) {
       WHERE oi.product_id = ? AND o.status = 'completed'
     `, [productId]);
 
-
     const row = result[0];
     const totalQuantity = row?.total_quantity || 0;
     const totalCost = row?.total_cost || 0;
-
 
     if (totalQuantity === 0) {
       return 0;
     }
 
-    // 计算平均成本，保留两位小数
-    const avgCost = Math.round((totalCost / totalQuantity) * 100) / 100;
-    return avgCost;
+    return Math.round((totalCost / totalQuantity) * 100) / 100;
   } catch (error) {
     console.error('[计算平均成本失败]', error);
     return 0;
@@ -44,7 +39,7 @@ async function calculateAvgCost(productId) {
 }
 
 /**
- * 批量计算多个商品的平均成本
+ * 批量计算多个商品的平均成本（简单加权平均）
  * @param {string[]} productIds - 商品ID数组
  * @returns {Object} 商品ID -> 平均成本的映射
  */
@@ -54,10 +49,9 @@ async function batchCalculateAvgCost(productIds) {
   }
 
   try {
-    // 使用 OR 条件代替 IN
     const placeholders = productIds.map(() => 'oi.product_id = ?').join(' OR ');
     const result = await db.query(`
-      SELECT 
+      SELECT
         oi.product_id,
         SUM(oi.quantity) as total_quantity,
         SUM(oi.total_price) as total_cost
@@ -67,15 +61,10 @@ async function batchCalculateAvgCost(productIds) {
       GROUP BY oi.product_id
     `, productIds);
 
-
     const avgCostMap = {};
-    
-    // 初始化所有商品的平均成本为0
     for (const id of productIds) {
       avgCostMap[id] = 0;
     }
-
-    // 计算每个商品的平均成本
     for (const row of result) {
       if (row.total_quantity > 0) {
         avgCostMap[row.product_id] = Math.round((row.total_cost / row.total_quantity) * 100) / 100;
