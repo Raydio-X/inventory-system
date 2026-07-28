@@ -44,7 +44,7 @@ const getInventory = async (req, res, next) => {
 
     // 低库存过滤
     if (lowStock === 'true') {
-      sql += ' AND s.stock <= 10';
+      sql += ' AND s.stock <= 3';
     }
 
     sql += ' ORDER BY p.created_at DESC';

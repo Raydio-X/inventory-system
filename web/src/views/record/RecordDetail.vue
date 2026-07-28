@@ -69,18 +69,35 @@
           <span class="item-count">共 {{ recordData.items?.length || 0 }} 件</span>
         </div>
 
-        <div v-if="recordData.items && recordData.items.length > 0" class="items-list">
-          <div v-for="(item, index) in recordData.items" :key="index" class="item-row">
-            <div class="item-main">
-              <span class="item-name">{{ item.productName }}</span>
-              <div class="item-sku">
-                <span v-if="item.color" class="sku-tag">{{ item.color }}</span>
-                <span v-if="item.size" class="sku-tag">{{ item.size }}</span>
+        <div v-if="recordData.items && recordData.items.length > 0" class="items-container">
+          <!-- 表头 -->
+          <div class="detail-table-header">
+            <span class="col-name">商品</span>
+            <span class="col-spec">规格</span>
+            <span class="col-price">单价</span>
+            <span class="col-qty">数量</span>
+            <span class="col-sub">小计</span>
+          </div>
+
+          <!-- 商品分组列表 -->
+          <div class="detail-items">
+            <div v-for="group in groupItemsByProduct(recordData.items)" :key="group.productName" class="product-group">
+              <!-- 商品名称行 -->
+              <div class="product-group-header">
+                <span class="group-name">{{ group.productName }}</span>
+                <span class="group-count">{{ group.items.length }}个规格</span>
               </div>
-            </div>
-            <div class="item-nums">
-              <span class="item-price-qty">¥{{ item.price }} × {{ item.quantity }}</span>
-              <span class="item-subtotal">¥{{ formatAmount(item.price * item.quantity) }}</span>
+              <!-- 规格明细 -->
+              <div v-for="item in group.items" :key="item.skuId || item.id" class="detail-item">
+                <span class="col-name"></span>
+                <span class="col-spec">
+                  <span class="sku-tag">{{ item.color || '-' }}</span>
+                  <span class="sku-tag">{{ item.size || '-' }}</span>
+                </span>
+                <span class="col-price">¥{{ formatAmount(item.price) }}</span>
+                <span class="col-qty">{{ item.quantity }}</span>
+                <span class="col-sub">¥{{ formatAmount(item.price * item.quantity) }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -204,6 +221,25 @@ const recordData = computed(() => {
 const totalQuantity = computed(() => {
   return (recordData.value.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0)
 })
+
+// 按商品名称分组
+const groupItemsByProduct = (items) => {
+  if (!items || items.length === 0) return []
+
+  const groups = {}
+  items.forEach(item => {
+    const productName = item.productName || '未知商品'
+    if (!groups[productName]) {
+      groups[productName] = {
+        productName,
+        items: []
+      }
+    }
+    groups[productName].items.push(item)
+  })
+
+  return Object.values(groups)
+}
 
 // 获取状态文字
 const getStatusText = (status, type) => {
@@ -471,61 +507,140 @@ onMounted(() => {
       }
     }
 
-    // 商品明细
-    .items-list {
-      .item-row {
+    // 商品明细容器
+    .items-container {
+      // 表头
+      .detail-table-header {
         display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
         padding: 10px 0;
         border-bottom: 1px solid $border-lighter;
+        font-size: 12px;
+        color: $text-placeholder;
+        font-weight: 500;
 
-        &:last-child {
-          border-bottom: none;
+        .col-name {
+          width: 90px;
+          flex-shrink: 0;
         }
 
-        .item-main {
+        .col-spec {
           flex: 1;
+          display: flex;
+          justify-content: center;
           min-width: 0;
-
-          .item-name {
-            font-size: 14px;
-            color: $text-primary;
-            font-weight: 500;
-            display: block;
-            margin-bottom: 4px;
-          }
-
-          .item-sku {
-            display: flex;
-            gap: 4px;
-
-            .sku-tag {
-              padding: 1px 6px;
-              border-radius: 3px;
-              font-size: 11px;
-              background: $bg-page;
-              color: $text-secondary;
-            }
-          }
         }
 
-        .item-nums {
+        .col-price {
+          width: 65px;
           text-align: right;
           flex-shrink: 0;
-          margin-left: 12px;
+        }
 
-          .item-price-qty {
-            font-size: 12px;
-            color: $text-placeholder;
-            display: block;
-            margin-bottom: 2px;
+        .col-qty {
+          width: 50px;
+          text-align: center;
+          flex-shrink: 0;
+        }
+
+        .col-sub {
+          width: 65px;
+          text-align: right;
+          flex-shrink: 0;
+        }
+      }
+
+      // 商品分组列表
+      .detail-items {
+        .product-group {
+          margin-top: 12px;
+
+          &:first-child {
+            margin-top: 0;
           }
 
-          .item-subtotal {
-            font-size: 14px;
-            font-weight: 600;
-            color: $text-primary;
+          // 商品名称行
+          .product-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0 8px;
+            border-bottom: 1px dashed $border-lighter;
+
+            .group-name {
+              font-size: 14px;
+              font-weight: 600;
+              color: $text-primary;
+              flex: 1;
+              min-width: 0;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+
+            .group-count {
+              font-size: 11px;
+              color: $text-placeholder;
+              background: $bg-page;
+              padding: 2px 8px;
+              border-radius: 8px;
+              margin-left: 8px;
+              flex-shrink: 0;
+            }
+          }
+
+          // 规格明细
+          .detail-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 13px;
+
+            .col-name {
+              width: 90px;
+              flex-shrink: 0;
+            }
+
+            .col-spec {
+              flex: 1;
+              display: flex;
+              justify-content: center;
+              gap: 6px;
+              min-width: 0;
+
+              .sku-tag {
+                font-size: 12px;
+                color: $text-secondary;
+                background: $bg-page;
+                padding: 2px 8px;
+                border-radius: 4px;
+                white-space: nowrap;
+                flex-shrink: 0;
+              }
+            }
+
+            .col-price {
+              width: 65px;
+              text-align: right;
+              color: $text-secondary;
+              flex-shrink: 0;
+            }
+
+            .col-qty {
+              width: 50px;
+              text-align: center;
+              color: $text-primary;
+              font-weight: 500;
+              flex-shrink: 0;
+            }
+
+            .col-sub {
+              width: 65px;
+              text-align: right;
+              color: $text-primary;
+              font-weight: 600;
+              flex-shrink: 0;
+            }
           }
         }
       }

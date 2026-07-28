@@ -371,6 +371,22 @@ export const useBillingStore = defineStore('billing', () => {
     }
   }
 
+  // 撤回销售订单（库存回滚 + 利润回滚 + 删除订单）
+  const recallSalesOrder = async (orderId) => {
+    try {
+      const res = await api.post(`/billing/orders/${orderId}/recall`)
+      if (res.success) {
+        await fetchSalesOrders()
+        return true
+      } else {
+        throw new Error(res.message || '撤回订单失败')
+      }
+    } catch (error) {
+      console.error('[开单] 撤回订单失败:', error)
+      throw error
+    }
+  }
+
   // 初始化数据（从API加载）
   const initData = async () => {
     try {
@@ -438,6 +454,7 @@ export const useBillingStore = defineStore('billing', () => {
     fetchReturnOrders,
     updateSalesOrder,
     deleteSalesOrder,
+    recallSalesOrder,
     initData,
     addToReturnCart,
     removeFromReturnCart,

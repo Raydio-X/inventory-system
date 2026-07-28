@@ -443,6 +443,45 @@ const deleteSalesOrder = async (req, res, next) => {
 };
 
 /**
+ * 撤回销售订单
+ * 库存回滚 + 账目删除 + 客户统计更新 + 订单删除（事务保证一致性）
+ */
+const recallSalesOrder = async (req, res, next) => {
+  const { id } = req.params;
+  const operator = req.user?.name || '系统';
+
+  try {
+    // 检查订单是否存在
+    const existingOrder = await dataStore.getSalesOrderById(id);
+    if (!existingOrder) {
+      throw new NotFoundError('订单不存在');
+    }
+
+    await dataStore.deleteSalesOrder(id);
+
+    logOperation('RECALL_SALES_ORDER', {
+      orderId: id,
+      orderNo: existingOrder.order_no,
+      customerName: existingOrder.customer_name,
+      totalAmount: existingOrder.total_amount,
+      operator
+    });
+
+    res.json({
+      success: true,
+      message: '订单撤回成功，库存和利润已回滚'
+    });
+  } catch (error) {
+    logOperation('RECALL_SALES_ORDER_ERROR', {
+      orderId: id,
+      error: error.message,
+      operator
+    });
+    next(error);
+  }
+};
+
+/**
  * 获取客户历史购买价格
  * 根据客户ID和商品ID列表，查询该客户购买这些商品的历史价格
  */
@@ -497,5 +536,6 @@ module.exports = {
   updateOrderPayment,
   updateSalesOrder,
   deleteSalesOrder,
+  recallSalesOrder,
   getCustomerHistoryPrices
 };

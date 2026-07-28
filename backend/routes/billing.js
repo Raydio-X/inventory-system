@@ -115,6 +115,16 @@ router.delete('/orders/:id',
 );
 
 /**
+ * 撤回销售订单
+ * POST /api/billing/orders/:id/recall
+ */
+router.post('/orders/:id/recall',
+  [param('id').notEmpty().withMessage('订单ID不能为空')],
+  validate,
+  billingController.recallSalesOrder
+);
+
+/**
  * 获取客户历史购买价格
  * GET /api/billing/history-prices
  */

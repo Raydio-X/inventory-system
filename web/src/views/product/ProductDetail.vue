@@ -138,7 +138,7 @@
                   <span class="sku-size">{{ sku.size }}</span>
                 </div>
                 <div class="table-cell stock-cell">
-                  <span class="stock-num" :class="{ warning: sku.stock <= 10 }">
+                  <span class="stock-num" :class="{ warning: sku.stock <= 3 }">
                     {{ sku.stock }}
                   </span>
                 </div>
@@ -195,7 +195,7 @@ const totalStock = computed(() =>
 )
 
 const warningStock = computed(() =>
-  product.value?.skus?.filter(sku => sku.stock <= 10).length || 0
+  product.value?.skus?.filter(sku => sku.stock <= 3).length || 0
 )
 
 const profitRate = computed(() => {

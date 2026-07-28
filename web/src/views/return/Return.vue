@@ -64,7 +64,7 @@
               <t-icon name="rollback" />
               <span class="badge-text">退货</span>
             </div>
-            <div class="product-stock-badge" :class="{ low: getTotalStock(product) <= 10 }">
+            <div class="product-stock-badge" :class="{ low: getTotalStock(product) <= 3 }">
               <t-icon name="shop" />
               <span>{{ getTotalStock(product) }}件</span>
             </div>

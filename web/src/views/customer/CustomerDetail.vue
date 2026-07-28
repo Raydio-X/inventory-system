@@ -168,11 +168,11 @@
               <div v-if="order.orderType === 'sales'" class="order-actions">
                 <t-button variant="outline" size="small" @click="goToEditOrder(order)">
                   <template #icon><t-icon name="edit" /></template>
-                  修改
+                  编辑
                 </t-button>
-                <t-button variant="outline" size="small" theme="danger" @click="openDeleteDialog(order)">
-                  <template #icon><t-icon name="delete" /></template>
-                  删除
+                <t-button variant="outline" size="small" theme="danger" @click="openRecallDialog(order)">
+                  <template #icon><t-icon name="rollback" /></template>
+                  撤回
                 </t-button>
               </div>
             </div>
@@ -181,38 +181,38 @@
       </div>
     </div>
 
-    <!-- 删除确认弹窗 -->
+    <!-- 撤回确认弹窗 -->
     <t-dialog
-      v-model:visible="deleteDialogVisible"
-      header="确认删除"
+      v-model:visible="recallDialogVisible"
+      header="确认撤回"
       :close-btn="false"
       :footer="false"
       width="80%"
       placement="center"
     >
-      <div class="delete-confirm" v-if="deletingOrder">
+      <div class="delete-confirm" v-if="recallingOrder">
         <div class="delete-icon-wrap">
           <t-icon name="error-circle" class="delete-icon" />
         </div>
-        <div class="delete-text">确定要删除此订单吗？</div>
+        <div class="delete-text">确定要撤回此订单吗？</div>
         <div class="delete-info">
           <div class="delete-info-row">
             <span>单号</span>
-            <span>{{ deletingOrder.orderNo }}</span>
+            <span>{{ recallingOrder.orderNo }}</span>
           </div>
           <div class="delete-info-row">
             <span>金额</span>
-            <span>¥{{ formatAmount(deletingOrder.totalAmount) }}</span>
+            <span>¥{{ formatAmount(recallingOrder.totalAmount) }}</span>
           </div>
           <div class="delete-info-row">
             <span>商品数</span>
-            <span>{{ (deletingOrder.items || []).length }}件</span>
+            <span>{{ (recallingOrder.items || []).length }}件</span>
           </div>
         </div>
-        <div class="delete-warning">删除后库存将回滚，此操作不可恢复</div>
+        <div class="delete-warning">撤回后库存将回滚，利润数据将调整，此操作不可恢复</div>
         <div class="delete-footer">
-          <t-button variant="outline" @click="deleteDialogVisible = false" :disabled="deleteLoading">取消</t-button>
-          <t-button theme="danger" @click="confirmDelete" :loading="deleteLoading">确认删除</t-button>
+          <t-button variant="outline" @click="recallDialogVisible = false" :disabled="recallLoading">取消</t-button>
+          <t-button theme="danger" @click="confirmRecall" :loading="recallLoading">确认撤回</t-button>
         </div>
       </div>
     </t-dialog>
@@ -380,28 +380,31 @@ const goToEditOrder = (order) => {
   router.push(`/customers/${customerId.value}/order/${order.id}/edit`)
 }
 
-// ==================== 删除订单 ====================
-const deleteDialogVisible = ref(false)
-const deleteLoading = ref(false)
-const deletingOrder = ref(null)
+// ==================== 撤回订单 ====================
+const recallDialogVisible = ref(false)
+const recallLoading = ref(false)
+const recallingOrder = ref(null)
 
-const openDeleteDialog = (order) => {
-  deletingOrder.value = order
-  deleteDialogVisible.value = true
+const openRecallDialog = (order) => {
+  recallingOrder.value = order
+  recallDialogVisible.value = true
 }
 
-const confirmDelete = async () => {
-  deleteLoading.value = true
+const confirmRecall = async () => {
+  recallLoading.value = true
   try {
-    await billingStore.deleteSalesOrder(deletingOrder.value.id)
-    deleteDialogVisible.value = false
-    MessagePlugin.success('订单已删除')
-    // 刷新客户数据
-    await customerStore.initData()
+    await billingStore.recallSalesOrder(recallingOrder.value.id)
+    recallDialogVisible.value = false
+    MessagePlugin.success('订单已撤回，库存和利润已回滚')
+    // 刷新客户数据和订单数据
+    await Promise.all([
+      customerStore.initData(),
+      billingStore.fetchSalesOrders()
+    ])
   } catch (error) {
-    MessagePlugin.error(error.message || '删除失败')
+    MessagePlugin.error(error.message || '撤回失败')
   } finally {
-    deleteLoading.value = false
+    recallLoading.value = false
   }
 }
 

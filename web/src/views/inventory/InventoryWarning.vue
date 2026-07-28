@@ -100,12 +100,12 @@ const productStore = useProductStore()
 
 const searchKeyword = ref('')
 
-// 库存预警商品（stock <= 10）
+// 库存预警商品（stock <= 3）
 const warningProducts = computed(() => {
   const products = productStore.products.filter(p => p.status === 'active')
   return products
     .map(product => {
-      const lowStockSkus = (product.skus || []).filter(sku => sku.stock <= 10)
+      const lowStockSkus = (product.skus || []).filter(sku => sku.stock <= 3)
       if (lowStockSkus.length === 0) return null
       return { ...product, skus: lowStockSkus }
     })
@@ -136,7 +136,7 @@ const outOfStockCount = computed(() =>
 // 低库存数量（不包括缺货）
 const lowStockCount = computed(() =>
   warningProducts.value.reduce((sum, p) =>
-    sum + p.skus.filter(s => s.stock > 0 && s.stock <= 10).length, 0
+    sum + p.skus.filter(s => s.stock > 0 && s.stock <= 3).length, 0
   )
 )
 

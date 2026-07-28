@@ -571,6 +571,22 @@ class MySQLDataStore {
           [oldOrder.total_amount, orderData.totalAmount, oldDebt, newDebt, oldOrder.customer_id]
         );
       }
+
+      // 删除旧账目记录
+      await connection.execute(
+        'DELETE FROM account_records WHERE order_id = ?',
+        [id]
+      );
+
+      // 插入新账目记录（如果有已付款金额）
+      if (orderData.paidAmount > 0) {
+        const accId = this.generateId('acc-');
+        await connection.execute(
+          `INSERT INTO account_records (id, type, category, amount, order_id, order_no, remark)
+           VALUES (?, 'income', 'sales', ?, ?, ?, '销售收款-订单修改')`,
+          [accId, orderData.paidAmount, id, oldOrder.order_no]
+        );
+      }
     });
 
     return await this.getSalesOrderById(id);
@@ -1073,7 +1089,7 @@ class MySQLDataStore {
     }
 
     if (lowStock) {
-      sql += ' AND s.stock <= 10';
+      sql += ' AND s.stock <= 3';
     }
 
     sql += ' ORDER BY p.created_at DESC';
