@@ -318,7 +318,7 @@ const TABLE_DEFINITIONS = [
         order_no VARCHAR(50),
         remark VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (sku_id) REFERENCES skus(id)
+        FOREIGN KEY (sku_id) REFERENCES skus(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     indexes: [
       'CREATE INDEX IF NOT EXISTS idx_inventory_logs_sku_id ON inventory_logs(sku_id)',

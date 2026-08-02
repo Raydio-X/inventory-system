@@ -384,13 +384,14 @@ const updateProduct = async (req, res, next) => {
 };
 
 /**
- * 删除商品（硬删除），同时删除商品图片和关联的SKU
+ * 删除商品（硬删除），同时删除商品图片和关联的SKU、库存流水
  */
 const deleteProduct = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [existing] = await db.query('SELECT * FROM products WHERE id = ?', [id]);
+    const existingRows = await db.query('SELECT * FROM products WHERE id = ?', [id]);
+    const existing = existingRows[0];
 
     if (!existing) {
       throw new NotFoundError('商品不存在');
@@ -419,7 +420,17 @@ const deleteProduct = async (req, res, next) => {
       }
     }
 
-    // 先删除关联的 SKU 记录
+    // 获取该商品的所有 SKU ID
+    const skus = await db.query('SELECT id FROM skus WHERE product_id = ?', [id]);
+    const skuIds = skus.map(sku => sku.id);
+
+    if (skuIds.length > 0) {
+      // 先删除库存流水记录（有外键约束）
+      const placeholders = skuIds.map(() => '?').join(',');
+      await db.query(`DELETE FROM inventory_logs WHERE sku_id IN (${placeholders})`, skuIds);
+    }
+
+    // 删除关联的 SKU 记录
     await db.query("DELETE FROM skus WHERE product_id = ?", [id]);
     
     // 然后硬删除商品记录
