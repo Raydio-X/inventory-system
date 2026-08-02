@@ -29,6 +29,7 @@
           <div class="product-header" @click="toggleProduct(product.productName)">
             <div class="product-main">
               <span class="product-name">{{ product.productName }}</span>
+              <span class="product-unit-cost">成本价 ¥{{ formatAmount(product.unitCostPrice) }}/件</span>
               <span :class="['product-profit', { negative: product.totalProfit < 0 }]">
                 ¥{{ formatAmount(product.totalProfit) }}
               </span>
@@ -52,6 +53,7 @@
                     <span class="spec-tag">{{ spec.size || '-' }}</span>
                   </span>
                   <span class="spec-count">{{ spec.salesCount }}件</span>
+                  <span class="spec-unit-cost">¥{{ formatAmount(spec.unitCostPrice) }}/件</span>
                 </div>
                 <div class="spec-amounts">
                   <span class="spec-sales">¥{{ formatAmount(spec.salesAmount) }}</span>
@@ -176,6 +178,11 @@ const formatAmount = (amount) => {
               color: $text-primary;
             }
 
+            .product-unit-cost {
+              font-size: 12px;
+              color: $text-secondary;
+            }
+
             .product-profit {
               font-size: 16px;
               font-weight: 700;
@@ -244,6 +251,11 @@ const formatAmount = (amount) => {
               .spec-count {
                 font-size: 12px;
                 color: $text-secondary;
+              }
+
+              .spec-unit-cost {
+                font-size: 11px;
+                color: $text-placeholder;
               }
             }
 

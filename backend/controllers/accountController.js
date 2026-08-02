@@ -337,7 +337,7 @@ const getProfitDetail = async (req, res, next) => {
     // 初始化所有商品和SKU（确保所有已创建的商品都显示）
     const productMap = new Map();
 
-    // 先添加所有商品及其SKU
+    // 先添加所有商品及其SKU，并记录单位成本价
     allProducts.forEach(item => {
       if (item.sku_id) {
         const key = `${item.product_name}|${item.color}|${item.size}`;
@@ -345,6 +345,7 @@ const getProfitDetail = async (req, res, next) => {
           productName: item.product_name,
           color: item.color,
           size: item.size,
+          unitCostPrice: Number(item.product_cost_price) || 0,
           salesCount: 0,
           salesAmount: 0,
           costAmount: 0,
@@ -354,14 +355,15 @@ const getProfitDetail = async (req, res, next) => {
       }
     });
 
-    // 处理销售数据（含成本）
+    // 处理销售数据（用销售数量 × 单位成本价计算总成本）
     salesDetail.forEach(item => {
       const key = `${item.product_name}|${item.color}|${item.size}`;
       if (productMap.has(key)) {
         const existing = productMap.get(key);
         existing.salesCount = Number(item.sales_count) || 0;
         existing.salesAmount = Number(item.sales_amount) || 0;
-        existing.costAmount = Number(item.cost_amount) || 0;
+        // 成本 = 销售数量 × 单位成本价
+        existing.costAmount = existing.salesCount * existing.unitCostPrice;
       }
     });
 
@@ -394,13 +396,15 @@ const getProfitDetail = async (req, res, next) => {
           totalCostAmount: 0,
           totalReturnCount: 0,
           totalReturnAmount: 0,
-          totalProfit: 0
+          totalProfit: 0,
+          unitCostPrice: item.unitCostPrice
         };
       }
 
       productGroups[item.productName].specs.push({
         color: item.color,
         size: item.size,
+        unitCostPrice: item.unitCostPrice,
         salesCount: netSalesCount,
         salesAmount: netSalesAmount,
         costAmount: item.costAmount,

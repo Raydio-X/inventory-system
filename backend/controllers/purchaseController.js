@@ -119,11 +119,13 @@ const getPurchaseOrderById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [order] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const orderRows = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
 
-    if (!order) {
+    if (!orderRows || orderRows.length === 0) {
       throw new NotFoundError('采购订单不存在');
     }
+
+    const order = orderRows[0];
 
     const items = await db.query(
       'SELECT * FROM purchase_order_items WHERE order_id = ?',
@@ -164,7 +166,8 @@ const createPurchaseOrder = async (req, res, next) => {
         throw new ValidationError('采购明细必须关联商品');
       }
 
-      const [product] = await db.query('SELECT id, status FROM products WHERE id = ?', [item.productId]);
+      const productRows = await db.query('SELECT id, status FROM products WHERE id = ?', [item.productId]);
+      const product = productRows[0];
       if (!product) {
         throw new ValidationError(`商品 ${item.productId} 不存在`);
       }
@@ -176,7 +179,8 @@ const createPurchaseOrder = async (req, res, next) => {
         throw new ValidationError(`商品 ${item.productName || ''} 的采购明细必须关联SKU`);
       }
 
-      const [sku] = await db.query('SELECT id, product_id FROM skus WHERE id = ? AND product_id = ?', [item.skuId, item.productId]);
+      const skuRows = await db.query('SELECT id, product_id FROM skus WHERE id = ? AND product_id = ?', [item.skuId, item.productId]);
+      const sku = skuRows[0];
       if (!sku) {
         throw new ValidationError(`SKU ${item.skuId} 不存在或不属于该商品`);
       }
@@ -185,7 +189,8 @@ const createPurchaseOrder = async (req, res, next) => {
     // 获取供应商名称
     let supplierName = supplier || '';
     if (supplierId && !supplierName) {
-      const [supplierInfo] = await db.query('SELECT name FROM suppliers WHERE id = ?', [supplierId]);
+      const supplierInfoRows = await db.query('SELECT name FROM suppliers WHERE id = ?', [supplierId]);
+      const supplierInfo = supplierInfoRows[0];
       if (supplierInfo) {
         supplierName = supplierInfo.name;
       }
@@ -260,7 +265,8 @@ const createPurchaseOrder = async (req, res, next) => {
     });
 
     // 查询完整订单返回
-    const [newOrder] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [orderId]);
+    const newOrderRows = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [orderId]);
+    const newOrder = newOrderRows[0];
     const newItems = await db.query('SELECT * FROM purchase_order_items WHERE order_id = ?', [orderId]);
 
     const data = {
@@ -286,7 +292,8 @@ const confirmPurchase = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [existing] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const existingRows = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const existing = existingRows[0];
     if (!existing) {
       throw new NotFoundError('采购订单不存在');
     }
@@ -370,7 +377,8 @@ const confirmPurchase = async (req, res, next) => {
     });
 
     // 查询更新后的订单
-    const [updatedOrder] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const updatedOrderRows = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const updatedOrder = updatedOrderRows[0];
     const updatedItems = await db.query('SELECT * FROM purchase_order_items WHERE order_id = ?', [id]);
 
     const data = {
@@ -396,7 +404,8 @@ const updatePurchaseOrder = async (req, res, next) => {
     const { id } = req.params;
     const { items, remark, isFirstPurchase } = req.body;
 
-    const [existing] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const existingRows = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const existing = existingRows[0];
     if (!existing) {
       throw new NotFoundError('采购订单不存在');
     }
@@ -415,7 +424,8 @@ const updatePurchaseOrder = async (req, res, next) => {
         throw new ValidationError('采购明细必须关联商品');
       }
 
-      const [product] = await db.query('SELECT id, status FROM products WHERE id = ?', [item.productId]);
+      const productRows = await db.query('SELECT id, status FROM products WHERE id = ?', [item.productId]);
+      const product = productRows[0];
       if (!product) {
         throw new ValidationError(`商品 ${item.productId} 不存在`);
       }
@@ -427,7 +437,8 @@ const updatePurchaseOrder = async (req, res, next) => {
         throw new ValidationError(`商品 ${item.productName || ''} 的采购明细必须关联SKU`);
       }
 
-      const [sku] = await db.query('SELECT id, product_id FROM skus WHERE id = ? AND product_id = ?', [item.skuId, item.productId]);
+      const skuRows = await db.query('SELECT id, product_id FROM skus WHERE id = ? AND product_id = ?', [item.skuId, item.productId]);
+      const sku = skuRows[0];
       if (!sku) {
         throw new ValidationError(`SKU ${item.skuId} 不存在或不属于该商品`);
       }
@@ -460,7 +471,8 @@ const updatePurchaseOrder = async (req, res, next) => {
     });
 
     // 查询更新后的订单
-    const [updatedOrder] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const updatedOrderRows = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const updatedOrder = updatedOrderRows[0];
     const updatedItems = await db.query('SELECT * FROM purchase_order_items WHERE order_id = ?', [id]);
 
     const data = {
@@ -486,18 +498,18 @@ const revokePurchaseOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [existing] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
-    if (!existing) {
+    const existing = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    if (!existing || existing.length === 0) {
       throw new NotFoundError('采购订单不存在');
     }
 
     // 只有已入库的订单可以撤回
-    if (existing.status !== 'completed') {
+    if (existing[0].status !== 'completed') {
       throw new ValidationError('只有已入库的采购订单才能撤回');
     }
 
     // 获取采购订单明细
-    const [items] = await db.query(
+    const items = await db.query(
       'SELECT * FROM purchase_order_items WHERE order_id = ?',
       [id]
     );
@@ -544,7 +556,8 @@ const deletePurchaseOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [existing] = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const existingRows = await db.query('SELECT * FROM purchase_orders WHERE id = ?', [id]);
+    const existing = existingRows[0];
     if (!existing) {
       throw new NotFoundError('采购订单不存在');
     }
