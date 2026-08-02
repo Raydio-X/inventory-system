@@ -289,49 +289,34 @@ const createAccountRecord = async (req, res, next) => {
  */
 const getProfitDetail = async (req, res, next) => {
   try {
-    // 首先获取所有商品及其SKU信息
+    // 首先获取所有商品及其SKU信息（含成本价和库存）
     const allProducts = await db.query(
       `SELECT
         p.id as product_id,
         p.name as product_name,
+        p.cost_price as product_cost_price,
         s.id as sku_id,
         s.color,
-        s.size
+        s.size,
+        s.stock as sku_stock
        FROM products p
        LEFT JOIN skus s ON p.id = s.product_id
        WHERE p.status = 'active'
        ORDER BY p.name, s.color, s.size`
     );
 
-    // 查询每个商品的采购成本价（简单加权平均）
-    // 直接从采购订单明细计算，确保有采购记录的商品显示正确成本
-    const purchaseCostResult = await db.query(
-      `SELECT
-        poi.product_id,
-        SUM(poi.quantity) as total_quantity,
-        SUM(poi.total_price) as total_cost
-       FROM purchase_order_items poi
-       JOIN purchase_orders po ON poi.order_id = po.id
-       WHERE po.status = 'completed' AND poi.product_id IS NOT NULL
-       GROUP BY poi.product_id`
-    );
-
-    // 构建商品ID -> 单位成本价的映射
-    const productCostMap = {};
-    for (const row of purchaseCostResult) {
-      if (row.total_quantity > 0) {
-        productCostMap[row.product_id] = Math.round((row.total_cost / row.total_quantity) * 100) / 100;
-      }
-    }
-
-    // 查询每个商品的销售统计
+    // 查询每个商品的销售统计（销售额 + 成本）
+    // 成本价统一使用 products.cost_price（简单加权平均成本），确保与前端显示一致
     const salesDetail = await db.query(
       `SELECT
         soi.product_name,
         soi.color,
         soi.size,
         COALESCE(SUM(soi.quantity), 0) as sales_count,
-        COALESCE(SUM(soi.quantity * soi.price), 0) as sales_amount
+        COALESCE(SUM(soi.quantity * soi.price), 0) as sales_amount,
+        COALESCE(SUM(
+          soi.quantity * (SELECT p.cost_price FROM skus s JOIN products p ON s.product_id = p.id WHERE s.id = soi.sku_id)
+        ), 0) as cost_amount
        FROM sales_order_items soi
        JOIN sales_orders so ON soi.order_id = so.id
        GROUP BY soi.product_name, soi.color, soi.size`
@@ -350,20 +335,23 @@ const getProfitDetail = async (req, res, next) => {
        GROUP BY roi.product_name, roi.color, roi.size`
     );
 
-    // 初始化所有商品和SKU
+    // 初始化所有商品和SKU（确保所有已创建的商品都显示）
     const productMap = new Map();
 
-    // 添加所有商品及其SKU，从采购记录获取单位成本价
+    // 先添加所有商品及其SKU，并记录单位成本价和库存成本
     allProducts.forEach(item => {
       if (item.sku_id) {
         const key = `${item.product_name}|${item.color}|${item.size}`;
+        const unitCostPrice = Number(item.product_cost_price) || 0;
+        const skuStock = Number(item.sku_stock) || 0;
         productMap.set(key, {
           productName: item.product_name,
-          productId: item.product_id,
           color: item.color,
           size: item.size,
-          // 从采购记录计算的单位成本价
-          unitCostPrice: productCostMap[item.product_id] || 0,
+          unitCostPrice,
+          skuStock,
+          // 库存成本 = 当前库存 × 单位成本价
+          stockCostAmount: skuStock * unitCostPrice,
           salesCount: 0,
           salesAmount: 0,
           costAmount: 0,
@@ -373,7 +361,7 @@ const getProfitDetail = async (req, res, next) => {
       }
     });
 
-    // 处理销售数据
+    // 处理销售数据（用销售数量 × 单位成本价计算总成本）
     salesDetail.forEach(item => {
       const key = `${item.product_name}|${item.color}|${item.size}`;
       if (productMap.has(key)) {
@@ -415,6 +403,8 @@ const getProfitDetail = async (req, res, next) => {
           totalReturnCount: 0,
           totalReturnAmount: 0,
           totalProfit: 0,
+          totalStock: 0,
+          totalStockCostAmount: 0,
           unitCostPrice: item.unitCostPrice
         };
       }
@@ -423,6 +413,8 @@ const getProfitDetail = async (req, res, next) => {
         color: item.color,
         size: item.size,
         unitCostPrice: item.unitCostPrice,
+        skuStock: item.skuStock,
+        stockCostAmount: item.stockCostAmount,
         salesCount: netSalesCount,
         salesAmount: netSalesAmount,
         costAmount: item.costAmount,
@@ -435,6 +427,8 @@ const getProfitDetail = async (req, res, next) => {
       productGroups[item.productName].totalReturnCount += item.returnCount;
       productGroups[item.productName].totalReturnAmount += item.returnAmount;
       productGroups[item.productName].totalProfit += profit;
+      productGroups[item.productName].totalStock += item.skuStock;
+      productGroups[item.productName].totalStockCostAmount += item.stockCostAmount;
     });
 
     // 转为数组并按利润排序
