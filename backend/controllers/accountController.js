@@ -298,7 +298,7 @@ const getProfitDetail = async (req, res, next) => {
         s.id as sku_id,
         s.color,
         s.size,
-        s.stock as sku_stock
+        s.stock
        FROM products p
        LEFT JOIN skus s ON p.id = s.product_id
        WHERE p.status = 'active'
@@ -338,38 +338,39 @@ const getProfitDetail = async (req, res, next) => {
     // 初始化所有商品和SKU（确保所有已创建的商品都显示）
     const productMap = new Map();
 
-    // 先添加所有商品及其SKU，并记录单位成本价和库存成本
+    // 先添加所有商品及其SKU，并记录单位成本价和库存
     allProducts.forEach(item => {
       if (item.sku_id) {
         const key = `${item.product_name}|${item.color}|${item.size}`;
+        const stock = Number(item.stock) || 0;
         const unitCostPrice = Number(item.product_cost_price) || 0;
-        const skuStock = Number(item.sku_stock) || 0;
         productMap.set(key, {
           productName: item.product_name,
           color: item.color,
           size: item.size,
-          unitCostPrice,
-          skuStock,
-          // 库存成本 = 当前库存 × 单位成本价
-          stockCostAmount: skuStock * unitCostPrice,
+          stock: stock,
+          unitCostPrice: unitCostPrice,
+          // 库存成本 = 库存数量 × 单位成本价（所有商品都显示）
+          stockCostAmount: stock * unitCostPrice,
+          // 销售成本（用于计算利润）
+          salesCostAmount: 0,
           salesCount: 0,
           salesAmount: 0,
-          costAmount: 0,
           returnCount: 0,
           returnAmount: 0
         });
       }
     });
 
-    // 处理销售数据（用销售数量 × 单位成本价计算总成本）
+    // 处理销售数据
     salesDetail.forEach(item => {
       const key = `${item.product_name}|${item.color}|${item.size}`;
       if (productMap.has(key)) {
         const existing = productMap.get(key);
         existing.salesCount = Number(item.sales_count) || 0;
         existing.salesAmount = Number(item.sales_amount) || 0;
-        // 成本 = 销售数量 × 单位成本价
-        existing.costAmount = existing.salesCount * existing.unitCostPrice;
+        // 销售成本 = 销售数量 × 单位成本价
+        existing.salesCostAmount = existing.salesCount * existing.unitCostPrice;
       }
     });
 
@@ -389,9 +390,8 @@ const getProfitDetail = async (req, res, next) => {
       const netSalesCount = item.salesCount - item.returnCount;
       const netSalesAmount = item.salesAmount - item.returnAmount;
 
-      // 利润 = 销售额 - 采购成本 - 退货金额
-      // 退货后商品不收回，退货金额作为成本从利润中扣除
-      const profit = item.salesAmount - item.costAmount - item.returnAmount;
+      // 利润 = 销售额 - 库存成本 - 退货金额
+      const profit = item.salesAmount - item.stockCostAmount - item.returnAmount;
 
       if (!productGroups[item.productName]) {
         productGroups[item.productName] = {
@@ -399,12 +399,11 @@ const getProfitDetail = async (req, res, next) => {
           specs: [],
           totalSalesCount: 0,
           totalSalesAmount: 0,
-          totalCostAmount: 0,
+          totalStockCostAmount: 0,
+          totalSalesCostAmount: 0,
           totalReturnCount: 0,
           totalReturnAmount: 0,
           totalProfit: 0,
-          totalStock: 0,
-          totalStockCostAmount: 0,
           unitCostPrice: item.unitCostPrice
         };
       }
@@ -412,23 +411,22 @@ const getProfitDetail = async (req, res, next) => {
       productGroups[item.productName].specs.push({
         color: item.color,
         size: item.size,
+        stock: item.stock,
         unitCostPrice: item.unitCostPrice,
-        skuStock: item.skuStock,
-        stockCostAmount: item.stockCostAmount,
         salesCount: netSalesCount,
         salesAmount: netSalesAmount,
-        costAmount: item.costAmount,
+        stockCostAmount: item.stockCostAmount,
+        salesCostAmount: item.salesCostAmount,
         profit: profit
       });
 
       productGroups[item.productName].totalSalesCount += netSalesCount;
       productGroups[item.productName].totalSalesAmount += netSalesAmount;
-      productGroups[item.productName].totalCostAmount += item.costAmount;
+      productGroups[item.productName].totalStockCostAmount += item.stockCostAmount;
+      productGroups[item.productName].totalSalesCostAmount += item.salesCostAmount;
       productGroups[item.productName].totalReturnCount += item.returnCount;
       productGroups[item.productName].totalReturnAmount += item.returnAmount;
       productGroups[item.productName].totalProfit += profit;
-      productGroups[item.productName].totalStock += item.skuStock;
-      productGroups[item.productName].totalStockCostAmount += item.stockCostAmount;
     });
 
     // 转为数组并按利润排序
@@ -441,7 +439,8 @@ const getProfitDetail = async (req, res, next) => {
         summary: {
           totalSalesCount: result.reduce((sum, p) => sum + p.totalSalesCount, 0),
           totalSalesAmount: result.reduce((sum, p) => sum + p.totalSalesAmount, 0),
-          totalCostAmount: result.reduce((sum, p) => sum + p.totalCostAmount, 0),
+          totalStockCostAmount: result.reduce((sum, p) => sum + p.totalStockCostAmount, 0),
+          totalSalesCostAmount: result.reduce((sum, p) => sum + p.totalSalesCostAmount, 0),
           totalProfit: result.reduce((sum, p) => sum + p.totalProfit, 0)
         }
       }

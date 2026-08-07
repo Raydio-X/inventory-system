@@ -29,20 +29,17 @@
           <div class="product-header" @click="toggleProduct(product.productName)">
             <div class="product-main">
               <span class="product-name">{{ product.productName }}</span>
-              <span class="product-unit-cost">成本价 ¥{{ formatAmount(product.unitCostPrice) }}/件</span>
               <span :class="['product-profit', { negative: product.totalProfit < 0 }]">
                 ¥{{ formatAmount(product.totalProfit) }}
               </span>
               <t-icon :class="['expand-icon', { expanded: expandedProducts[product.productName] }]" name="chevron-down" />
             </div>
             <div class="product-summary">
-              <span>库存 {{ product.totalStock }}件</span>
-              <span class="divider">|</span>
-              <span>库存成本 ¥{{ formatAmount(product.totalStockCostAmount) }}</span>
-              <span class="divider">|</span>
               <span>销量 {{ product.totalSalesCount }}件</span>
               <span class="divider">|</span>
               <span>销售额 ¥{{ formatAmount(product.totalSalesAmount) }}</span>
+              <span class="divider">|</span>
+              <span>成本 ¥{{ formatAmount(product.totalStockCostAmount) }}</span>
             </div>
           </div>
 
@@ -54,15 +51,13 @@
                     <span class="spec-tag">{{ spec.color || '-' }}</span>
                     <span class="spec-tag">{{ spec.size || '-' }}</span>
                   </span>
-                  <span class="spec-stock">库存{{ spec.skuStock }}件</span>
                   <span class="spec-unit-cost">¥{{ formatAmount(spec.unitCostPrice) }}/件</span>
                 </div>
                 <div class="spec-amounts">
-                  <span class="spec-stock-cost">库存成本 ¥{{ formatAmount(spec.stockCostAmount) }}</span>
-                  <span class="spec-sales" v-if="spec.salesCount > 0">销售额 ¥{{ formatAmount(spec.salesAmount) }}</span>
-                  <span class="spec-cost" v-if="spec.costAmount > 0">销售成本 ¥{{ formatAmount(spec.costAmount) }}</span>
-                  <span :class="['spec-profit', { negative: spec.profit < 0 }]" v-if="spec.salesCount > 0">
-                    利润 ¥{{ formatAmount(spec.profit) }}
+                  <span class="spec-sales">¥{{ formatAmount(spec.salesAmount) }}</span>
+                  <span class="spec-cost">成本 ¥{{ formatAmount(spec.stockCostAmount) }}</span>
+                  <span :class="['spec-profit', { negative: spec.profit < 0 }]">
+                    ¥{{ formatAmount(spec.profit) }}
                   </span>
                 </div>
               </div>
@@ -251,7 +246,7 @@ const formatAmount = (amount) => {
                 }
               }
 
-              .spec-stock {
+              .spec-count {
                 font-size: 12px;
                 color: $text-secondary;
               }
@@ -267,15 +262,9 @@ const formatAmount = (amount) => {
               align-items: center;
               gap: 8px;
               font-size: 12px;
-              flex-wrap: wrap;
-
-              .spec-stock-cost {
-                color: $text-primary;
-                font-weight: 500;
-              }
 
               .spec-sales {
-                color: $text-secondary;
+                color: $text-primary;
               }
 
               .spec-cost {
