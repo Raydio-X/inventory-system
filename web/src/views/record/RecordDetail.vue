@@ -126,6 +126,12 @@
             <span class="amount-label">订单金额</span>
             <span class="amount-value">¥{{ formatAmount(recordData.totalAmount) }}</span>
           </div>
+          <div class="amount-row">
+            <span class="amount-label">利润</span>
+            <span :class="['amount-value', 'profit', { negative: orderProfit < 0 }]">
+              {{ orderProfit < 0 ? '-' : '' }}¥{{ formatAmount(Math.abs(orderProfit)) }}
+            </span>
+          </div>
           <div v-if="recordData.type === 'sales' && recordData.discount > 0" class="amount-row">
             <span class="amount-label">优惠折扣</span>
             <span class="amount-value discount">-¥{{ formatAmount(recordData.discount) }}</span>
@@ -222,7 +228,42 @@ const totalQuantity = computed(() => {
   return (recordData.value.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0)
 })
 
-// 按商品名称分组
+// 计算订单利润 = 销售额 - 成本（退货单利润为负）
+const orderProfit = computed(() => {
+  const items = recordData.value.items || []
+  const cost = items.reduce((sum, item) => sum + (item.quantity || 0) * (item.costPrice || 0), 0)
+  const sales = recordData.value.totalAmount || 0
+  if (recordData.value.type === 'returns') {
+    return -(sales - cost)
+  }
+  return sales - cost
+})
+
+// 尺码排序辅助函数
+const getSizeOrder = (size) => {
+  if (!size) return 999
+  const s = String(size).toUpperCase().trim()
+  // 常见尺码映射
+  const sizeMap = {
+    'XS': 1, 'XSMALL': 1,
+    'S': 2, 'SMALL': 2,
+    'M': 3, 'MEDIUM': 3,
+    'L': 4, 'LARGE': 4,
+    'XL': 5, 'X-LARGE': 5,
+    'XXL': 6, '2XL': 6, 'XX-LARGE': 6,
+    'XXXL': 7, '3XL': 7, 'XXX-LARGE': 7,
+    '4XL': 8, 'XXXXL': 8,
+    '5XL': 9
+  }
+  if (sizeMap[s] !== undefined) return sizeMap[s]
+  // 数字尺码（如 36, 38, 40 等）
+  const num = parseInt(s)
+  if (!isNaN(num)) return num
+  // 其他情况按字符串排序
+  return 999
+}
+
+// 按商品名称分组，并按颜色+尺码排序
 const groupItemsByProduct = (items) => {
   if (!items || items.length === 0) return []
 
@@ -236,6 +277,20 @@ const groupItemsByProduct = (items) => {
       }
     }
     groups[productName].items.push(item)
+  })
+
+  // 对每个分组内的规格进行排序：先按颜色，再按尺码升序
+  Object.values(groups).forEach(group => {
+    group.items.sort((a, b) => {
+      const colorA = (a.color || '').toString().trim()
+      const colorB = (b.color || '').toString().trim()
+      // 先按颜色排序（使用中文拼音）
+      if (colorA !== colorB) {
+        return colorA.localeCompare(colorB, 'zh-CN')
+      }
+      // 同颜色按尺码升序
+      return getSizeOrder(a.size) - getSizeOrder(b.size)
+    })
   })
 
   return Object.values(groups)
@@ -678,6 +733,15 @@ onMounted(() => {
           &.debt {
             color: $error-color;
             font-weight: 600;
+          }
+
+          &.profit {
+            color: $success-color;
+            font-weight: 600;
+
+            &.negative {
+              color: $error-color;
+            }
           }
         }
       }

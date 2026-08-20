@@ -68,6 +68,12 @@ const routes = [
     meta: { title: '操作记录', hideTabBar: true }
   },
   {
+    path: '/today-sales',
+    name: 'TodaySales',
+    component: () => import('@/views/home/TodaySales.vue'),
+    meta: { title: '今日销售', hideTabBar: true }
+  },
+  {
     path: '/records/:type/:id',
     name: 'RecordDetail',
     component: () => import('@/views/record/RecordDetail.vue'),

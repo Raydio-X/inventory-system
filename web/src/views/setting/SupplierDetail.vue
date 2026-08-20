@@ -104,6 +104,10 @@
                 <span class="info-label">日期</span>
                 <span class="info-value">{{ formatDate(order.createdAt) }}</span>
               </div>
+              <div class="info-row">
+                <span class="info-label">商品数量</span>
+                <span class="info-value">{{ order.items.reduce((sum, item) => sum + item.quantity, 0) }}件</span>
+              </div>
             </div>
 
             <!-- 金额摘要 -->
@@ -137,7 +141,7 @@
                     <!-- 商品名称行 -->
                     <div class="product-group-header">
                       <span class="group-name">{{ group.productName }}</span>
-                      <span class="group-count">{{ group.items.length }}个规格</span>
+                      <span class="group-count">{{ group.items.reduce((sum, item) => sum + item.quantity, 0) }}件</span>
                     </div>
                     <!-- 规格明细 -->
                     <div v-for="item in group.items" :key="item.id" class="detail-item">

@@ -111,6 +111,14 @@
             </span>
           </div>
 
+          <!-- 利润摘要 -->
+          <div class="receipt-profit-bar" @click="toggleOrder(order.id)">
+            <span class="profit-label">利润</span>
+            <span :class="['profit-value', { negative: getOrderProfit(order) < 0 }]">
+              {{ getOrderProfit(order) < 0 ? '-' : '' }}¥{{ formatAmount(Math.abs(getOrderProfit(order))) }}
+            </span>
+          </div>
+
           <!-- 虚线分割线 -->
           <div class="receipt-divider">
             <span class="dot"></span>
@@ -277,6 +285,17 @@ const toggleOrder = (orderId) => {
 
 // 获取订单商品明细
 const getOrderItems = (order) => order.items || []
+
+// 计算订单利润 = 销售额 - 成本（退货单利润为负）
+const getOrderProfit = (order) => {
+  const items = order.items || []
+  const cost = items.reduce((sum, item) => sum + (item.quantity || 0) * (item.costPrice || 0), 0)
+  const sales = order.totalAmount || 0
+  if (order.orderType === 'return') {
+    return -(sales - cost)
+  }
+  return sales - cost
+}
 
 // 尺码排序辅助函数
 const getSizeOrder = (size) => {
@@ -803,6 +822,33 @@ onMounted(() => {
 
             &.return-amount {
               color: $primary-color;
+            }
+          }
+        }
+
+        // 利润摘要
+        .receipt-profit-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 18px;
+          cursor: pointer;
+          background: rgba($success-color, 0.02);
+          border-top: 1px solid $border-lighter;
+
+          .profit-label {
+            font-size: 13px;
+            color: $text-secondary;
+            font-weight: 500;
+          }
+
+          .profit-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: $success-color;
+
+            &.negative {
+              color: $error-color;
             }
           }
         }

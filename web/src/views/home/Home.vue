@@ -8,7 +8,7 @@
 
     <!-- 今日数据卡片 -->
     <div class="stats-grid">
-      <div class="stat-card primary">
+      <div class="stat-card primary" @click="router.push('/today-sales')">
         <div class="stat-value">{{ formatAmount(todayStats.sales) }}</div>
         <div class="stat-label">今日销售额</div>
       </div>
@@ -298,9 +298,14 @@ onMounted(() => {
 
       &.primary {
         background: linear-gradient(135deg, $primary-color, $primary-light);
+        cursor: pointer;
 
         .stat-value, .stat-label {
           color: white;
+        }
+
+        &:active {
+          opacity: 0.85;
         }
       }
 
