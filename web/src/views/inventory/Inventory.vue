@@ -8,7 +8,7 @@
       <div class="stats-row">
         <div class="stat-item">
           <div class="stat-value">{{ totalStock }}</div>
-          <div class="stat-label">总库�?�?</div>
+          <div class="stat-label">总库存</div>
         </div>
         <div class="stat-item">
           <div class="stat-value">{{ formatAmount(totalCost) }}</div>

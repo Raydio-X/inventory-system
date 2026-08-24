@@ -242,7 +242,7 @@
           <t-icon name="rollback" class="delete-icon" style="color: #e34d59;" />
         </div>
         <p class="delete-title">确定要撤回此采购订单吗？</p>
-        <p class="delete-hint">撤回后订单将删除，商品库存不变，成本将回滚</p>
+        <p class="delete-hint">撤回后订单将删除，商品库存和成本将回滚至入库前状态</p>
         <div class="delete-actions">
           <t-button theme="default" size="large" @click="revokeDialogVisible = false">取消</t-button>
           <t-button theme="danger" size="large" :loading="revoking" @click="confirmRevokeOrder">确认撤回</t-button>
@@ -430,7 +430,7 @@ const confirmRevokeOrder = async () => {
   revoking.value = true
   try {
     await purchaseStore.revokePurchaseOrder(revokeOrderId.value)
-    MessagePlugin.success('采购订单已撤回，成本已回滚')
+    MessagePlugin.success('采购订单已撤回，库存和成本已回滚')
     revokeDialogVisible.value = false
     await fetchSupplier()
   } catch (error) {

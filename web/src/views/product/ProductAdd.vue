@@ -249,6 +249,10 @@
             class="batch-input"
             placeholder="如：S, M, L, XL"
           />
+          <div class="size-shortcuts">
+            <t-button theme="default" variant="outline" size="small" @click="appendSizeRange(170, 190, 5)">170-190</t-button>
+            <t-button theme="default" variant="outline" size="small" @click="appendSizeRange(105, 125, 5)">105-125</t-button>
+          </div>
           <span class="batch-hint">例如输入 S, M, L, XL 将生成4条规格</span>
         </div>
 
@@ -569,6 +573,23 @@ const batchData = ref({
   sizes: '',
   stock: null
 })
+
+// 快捷输入尺码范围：在现有尺码基础上追加，不覆盖已有内容
+const appendSizeRange = (min, max, count) => {
+  const step = Math.round((max - min) / (count - 1))
+  const newSizes = []
+  for (let i = 0; i < count; i++) {
+    newSizes.push(String(min + step * i))
+  }
+
+  const existing = (batchData.value.sizes || '').trim()
+  if (existing) {
+    // 追加到已有内容，用逗号分隔
+    batchData.value.sizes = existing.replace(/[,，\s]+$/, '') + ', ' + newSizes.join(', ')
+  } else {
+    batchData.value.sizes = newSizes.join(', ')
+  }
+}
 
 // 批量添加预览（计算属性）
 const batchPreview = computed(() => {
@@ -1494,6 +1515,19 @@ onMounted(() => {
         font-size: $font-xs;
         color: $text-placeholder;
         margin-top: 4px;
+      }
+
+      .size-shortcuts {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+
+        .shortcut-label {
+          font-size: $font-xs;
+          color: $text-placeholder;
+          flex-shrink: 0;
+        }
       }
     }
 

@@ -302,11 +302,11 @@ const totalAmount = computed(() =>
   order.value.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.costPrice || 0), 0)
 )
 
-// 是否可保存
+// 是否可保存（数量非必填，至少有一项填写了数量）
 const canSave = computed(() =>
   order.value.supplierId &&
   order.value.items.length > 0 &&
-  order.value.items.every(item => item.quantity > 0 && item.costPrice > 0)
+  order.value.items.some(item => item.quantity > 0 && item.costPrice > 0)
 )
 
 // 搜索过滤商品
@@ -407,14 +407,18 @@ const submitOrder = async () => {
     return
   }
 
-  for (let i = 0; i < order.value.items.length; i++) {
-    const item = order.value.items[i]
-    if (!item.quantity || item.quantity <= 0) {
-      MessagePlugin.warning(`第${i + 1}项采购数量必须大于0`)
-      return
-    }
+  // 数量非必填：过滤掉未填写数量的规格，只提交有数量的项
+  const validItems = order.value.items.filter(item => item.quantity && item.quantity > 0)
+
+  if (validItems.length === 0) {
+    MessagePlugin.warning('请至少填写一项采购数量')
+    return
+  }
+
+  // 验证有效项的单价
+  for (const item of validItems) {
     if (!item.costPrice || item.costPrice <= 0) {
-      MessagePlugin.warning(`第${i + 1}项采购单价必须大于0`)
+      MessagePlugin.warning(`商品「${item.productName}」的采购单价必须大于0`)
       return
     }
   }
@@ -425,7 +429,7 @@ const submitOrder = async () => {
       remark: order.value.remark || '',
       isNewProduct: isNewProduct.value, // 传递新商品标识
       isFirstPurchase: order.value.isFirstPurchase,
-      items: order.value.items.map(item => ({
+      items: validItems.map(item => ({
         productId: item.productId,
         skuId: item.skuId,
         productName: item.productName,

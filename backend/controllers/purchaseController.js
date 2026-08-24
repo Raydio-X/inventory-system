@@ -492,7 +492,7 @@ const updatePurchaseOrder = async (req, res, next) => {
 
 /**
  * 撤回采购订单（仅限已入库状态）
- * 库存不回滚，但成本回滚，订单删除
+ * 库存回滚（确保非负） + 成本回滚（简单加权平均） + 订单删除
  */
 const revokePurchaseOrder = async (req, res, next) => {
   try {
@@ -515,11 +515,22 @@ const revokePurchaseOrder = async (req, res, next) => {
     );
 
     await db.transaction(async (connection) => {
-      // 先删除采购订单和明细
+      // 1. 库存回滚：扣减入库时增加的库存，确保库存非负
+      for (const item of items) {
+        if (item.sku_id) {
+          // 扣减库存，如果会导致负值则设为0
+          await connection.execute(
+            `UPDATE skus SET stock = GREATEST(stock - ?, 0) WHERE id = ?`,
+            [item.quantity, item.sku_id]
+          );
+        }
+      }
+
+      // 2. 删除采购订单和明细
       await connection.execute('DELETE FROM purchase_order_items WHERE order_id = ?', [id]);
       await connection.execute('DELETE FROM purchase_orders WHERE id = ?', [id]);
 
-      // 简单加权平均法：重新计算所有相关商品的成本价
+      // 3. 简单加权平均法：重新计算所有相关商品的成本价
       const productIds = [...new Set(items.map(item => item.product_id).filter(Boolean))];
       for (const productId of productIds) {
         const [purchaseRows] = await connection.execute(
@@ -542,7 +553,7 @@ const revokePurchaseOrder = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: '采购订单已撤回'
+      message: '采购订单已撤回，库存和成本已回滚'
     });
   } catch (error) {
     next(error);
