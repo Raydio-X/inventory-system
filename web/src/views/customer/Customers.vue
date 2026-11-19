@@ -154,12 +154,20 @@ const editCustomer = ref({ id: '', name: '', phone: '', remark: '' })
 const deleteCustomerInfo = ref({ id: '', name: '' })
 
 const filteredCustomers = computed(() => {
-  if (!searchKeyword.value) return customerStore.customers
-  const keyword = searchKeyword.value.toLowerCase()
-  return customerStore.customers.filter(c =>
-    c.name.toLowerCase().includes(keyword) ||
-    (c.phone && c.phone.includes(keyword))
-  )
+  let list = customerStore.customers
+  if (searchKeyword.value) {
+    const keyword = searchKeyword.value.toLowerCase()
+    list = list.filter(c =>
+      c.name.toLowerCase().includes(keyword) ||
+      (c.phone && c.phone.includes(keyword))
+    )
+  }
+  // 散客自动置顶显示
+  return [...list].sort((a, b) => {
+    const aIsWalkIn = a.name === '散客' ? 0 : 1
+    const bIsWalkIn = b.name === '散客' ? 0 : 1
+    return aIsWalkIn - bIsWalkIn
+  })
 })
 
 const canAdd = computed(() => newCustomer.value.name)

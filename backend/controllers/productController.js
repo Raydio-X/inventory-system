@@ -115,6 +115,7 @@ function mapProductRow(row) {
     name: row.name,
     category: row.category,
     supplierId: row.supplier_id,
+    supplierName: row.supplier_name || '',
     status: row.status,
     price: parseFloat(row.price),
     costPrice: parseFloat(row.cost_price),
@@ -145,7 +146,7 @@ const getProducts = async (req, res, next) => {
     const { keyword, category, status } = req.query;
 
     // 硬删除后不再需要过滤已删除商品
-    let sql = 'SELECT p.*, s.id AS sku_id, s.product_id, s.color, s.size, s.stock AS sku_stock, s.price AS sku_price, s.created_at AS sku_created_at, s.updated_at AS sku_updated_at FROM products p LEFT JOIN skus s ON p.id = s.product_id WHERE 1=1';
+    let sql = 'SELECT p.*, s.id AS sku_id, s.product_id, s.color, s.size, s.stock AS sku_stock, s.price AS sku_price, s.created_at AS sku_created_at, s.updated_at AS sku_updated_at, sup.name AS supplier_name FROM products p LEFT JOIN skus s ON p.id = s.product_id LEFT JOIN suppliers sup ON p.supplier_id = sup.id WHERE 1=1';
     const params = [];
 
     if (status) {
@@ -154,7 +155,7 @@ const getProducts = async (req, res, next) => {
     }
 
     if (keyword) {
-      sql += ' AND (p.name LIKE ? OR p.brand LIKE ?)';
+      sql += ' AND (p.name LIKE ? OR sup.name LIKE ?)';
       params.push(`%${keyword}%`, `%${keyword}%`);
     }
 
@@ -218,7 +219,7 @@ const getProductById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const [product] = await db.query('SELECT * FROM products WHERE id = ?', [id]);
+    const [product] = await db.query('SELECT p.*, sup.name AS supplier_name FROM products p LEFT JOIN suppliers sup ON p.supplier_id = sup.id WHERE p.id = ?', [id]);
 
     if (!product) {
       throw new NotFoundError('商品不存在');
@@ -252,8 +253,17 @@ const createProduct = async (req, res, next) => {
     const { name, category, supplierId, price, costPrice, skus, image } = req.body;
 
     // 数据验证
-    if (!name) {
+    if (!name || !name.trim()) {
       throw new ValidationError('商品名称不能为空');
+    }
+
+    // 商品名称不允许重复
+    const duplicateName = await db.query(
+      'SELECT id FROM products WHERE name = ?',
+      [name.trim()]
+    );
+    if (duplicateName.length > 0) {
+      throw new ValidationError('商品名称已存在，请使用其他名称');
     }
 
     if (price === undefined || price === null || price < 0) {
@@ -311,6 +321,20 @@ const updateProduct = async (req, res, next) => {
 
     if (!existing) {
       throw new NotFoundError('商品不存在');
+    }
+
+    // 商品名称不允许重复（排除自身）
+    if (name !== undefined && name !== null) {
+      if (!name.trim()) {
+        throw new ValidationError('商品名称不能为空');
+      }
+      const duplicateName = await db.query(
+        'SELECT id FROM products WHERE name = ? AND id <> ?',
+        [name.trim(), id]
+      );
+      if (duplicateName.length > 0) {
+        throw new ValidationError('商品名称已存在，请使用其他名称');
+      }
     }
 
     await db.transaction(async (connection) => {

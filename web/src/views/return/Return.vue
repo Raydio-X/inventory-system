@@ -18,7 +18,7 @@
     <div class="search-section">
       <t-input
         v-model="searchKeyword"
-        placeholder="搜索商品名称、品牌"
+        placeholder="搜索商品名称、供应商"
         clearable
         class="search-input"
       >
@@ -74,7 +74,7 @@
           <div class="product-info">
             <div class="product-name">{{ product.name }}</div>
             <div class="product-meta">
-              <span class="meta-brand">{{ product.brand || '无品牌' }}</span>
+              <span class="meta-brand">{{ product.supplierName || '无供应商' }}</span>
               <span class="meta-sku">{{ product.skus?.length || 0 }}种规格</span>
             </div>
             <div class="product-footer">
@@ -133,7 +133,7 @@ const filteredProducts = computed(() => {
     const keyword = searchKeyword.value.toLowerCase()
     products = products.filter(p =>
       p.name.toLowerCase().includes(keyword) ||
-      p.brand?.toLowerCase().includes(keyword)
+      p.supplierName?.toLowerCase().includes(keyword)
     )
   }
   return products

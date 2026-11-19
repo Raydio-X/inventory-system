@@ -703,6 +703,15 @@ const saveProduct = () => {
     MessagePlugin.warning('请输入商品名称')
     return
   }
+  // 商品名称不允许重复（编辑时排除自身）
+  const trimmedName = product.value.name.trim()
+  const duplicated = productStore.products.some(
+    p => p.name === trimmedName && p.id !== productId.value
+  )
+  if (duplicated) {
+    MessagePlugin.warning('商品名称已存在，请使用其他名称')
+    return
+  }
   if (!product.value.price || product.value.price <= 0) {
     MessagePlugin.warning('请输入商品售价')
     return

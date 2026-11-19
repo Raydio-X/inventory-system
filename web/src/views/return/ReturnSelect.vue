@@ -23,7 +23,7 @@
         <div class="product-info">
           <div class="product-name">{{ product.name }}</div>
           <div class="product-meta">
-            <span class="meta-brand">{{ product.brand || '无品牌' }}</span>
+            <span class="meta-brand">{{ product.supplierName || '无供应商' }}</span>
             <span class="meta-sku">{{ product.skus?.length || 0 }}种规格</span>
           </div>
           <div class="product-price">
